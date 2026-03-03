@@ -1,0 +1,337 @@
+---
+title: Shortcuts integration
+description: Automate story creation with Siri and Apple Shortcuts
+---
+
+StoryFox includes a powerful App Intent that lets you queue story requests from Siri, Shortcuts, and other automation tools. This opens up creative workflows like generating stories from voice commands, combining multiple AI models, or triggering story creation from other apps.
+
+## What is the "Create Story in StoryFox" intent?
+
+The **Create Story in StoryFox** intent is an App Intent that queues a story concept in StoryFox with full control over book settings. When triggered, it:
+
+1. Saves your story parameters to a queue
+2. Opens StoryFox automatically
+3. Populates the creation screen with your settings
+4. Optionally starts generation immediately
+
+This works seamlessly with Siri voice commands and the Shortcuts app, making it easy to create stories hands-free or as part of automated workflows.
+
+## Adding the intent to Shortcuts
+
+<Steps>
+  <Step title="Open the Shortcuts app">
+    Launch **Shortcuts** from your Applications folder or Launchpad.
+  </Step>
+
+  <Step title="Create a new shortcut">
+    Click the **+** button in the toolbar to start building a new shortcut.
+  </Step>
+
+  <Step title="Add the StoryFox action">
+    - In the actions sidebar, search for "StoryFox" or "Create Story"
+    - Drag **Create Story in StoryFox** into your shortcut
+    
+    You'll see a card with all available parameters.
+  </Step>
+
+  <Step title="Configure parameters">
+    Fill in the story settings (see Parameters section below). You can:
+    - Type static values directly
+    - Use variables from previous actions
+    - Leave parameters at their defaults
+  </Step>
+
+  <Step title="Name and save">
+    Give your shortcut a descriptive name like "Quick Story" or "Bedtime Story Generator" and click **Done**.
+  </Step>
+</Steps>
+
+## Available parameters
+
+The intent accepts the following parameters:
+
+<ParamField path="Story Concept" type="string" required>
+  The main idea or theme for your story. This is the only required parameter.
+  
+  **Examples:**
+  - "A brave mouse who explores a magical library"
+  - "Two best friends who discover a hidden treehouse"
+  - "A shy dragon learning to make friends"
+</ParamField>
+
+<ParamField path="Pages" type="integer" default="8">
+  Number of pages in your book. Must be an even number between 4 and 16.
+  
+  - **Minimum:** 4 pages
+  - **Maximum:** 16 pages
+  - **Default:** 8 pages
+  
+  <Tip>
+    Shorter books (4-6 pages) generate faster and work well for simple concepts. Longer books (12-16 pages) allow more complex narratives.
+  </Tip>
+</ParamField>
+
+<ParamField path="Book Format" type="enum" default="standard">
+  The page layout and aspect ratio for your book.
+  
+  - **Standard Square**: Classic square format, great for most stories
+  - **Landscape**: Wide format, ideal for panoramic scenes
+  - **Small Square**: Compact square format
+  - **Portrait**: Tall format, good for vertical compositions
+</ParamField>
+
+<ParamField path="Illustration Style" type="enum" default="illustration">
+  Visual style for all images in the book.
+  
+  - **Illustration**: Polished, storybook-style artwork
+  - **Animation**: Vibrant, animated look
+  - **Sketch**: Hand-drawn, sketchy aesthetic
+</ParamField>
+
+<ParamField path="Start Generation" type="boolean" default="true">
+  Whether to begin generating the story immediately after opening StoryFox.
+  
+  - **true**: Story generation starts automatically (hands-free mode)
+  - **false**: StoryFox opens with settings populated, but you must click **Squeeze a Story** manually
+  
+  <Tip>
+    Set this to `false` if you want to review or tweak settings before generating.
+  </Tip>
+</ParamField>
+
+## Step-by-step: Creating your first shortcut
+
+Let's build a simple voice-activated shortcut that creates an 8-page illustrated story.
+
+<Steps>
+  <Step title="Create a new shortcut">
+    Open Shortcuts and click **+** to create a new shortcut.
+  </Step>
+
+  <Step title="Add a text input action">
+    Search for "Ask for Input" and add it to your shortcut.
+    
+    Configure it:
+    - **Question:** "What should the story be about?"
+    - **Input Type:** Text
+    - **Default Answer:** (leave empty)
+  </Step>
+
+  <Step title="Add the StoryFox intent">
+    Search for "Create Story in StoryFox" and add it below the input action.
+    
+    Configure parameters:
+    - **Story Concept:** Tap the field and select the "Provided Input" variable from the previous step
+    - **Pages:** 8
+    - **Book Format:** Standard Square
+    - **Illustration Style:** Illustration
+    - **Start Generation:** true
+  </Step>
+
+  <Step title="Name and test">
+    Name your shortcut "Voice Story" and click **Done**.
+    
+    Run it by clicking the play button — Siri will ask what the story should be about, then queue it in StoryFox!
+  </Step>
+</Steps>
+
+## Example shortcut workflows
+
+<AccordionGroup>
+  <Accordion title="Bedtime story generator with Siri">
+    Create a shortcut that triggers with "Hey Siri, bedtime story":
+    
+    1. Add **Ask for Input**: "What should tonight's story be about?"
+    2. Add **Create Story in StoryFox**:
+       - Story Concept: `Provided Input`
+       - Pages: 6 (shorter for bedtime)
+       - Illustration Style: Sketch (softer look)
+       - Start Generation: true
+    
+    Activate via Siri for instant story creation without opening your Mac.
+  </Accordion>
+
+  <Accordion title="Chain with ChatGPT for richer concepts">
+    Use Shortcuts' "Use Model" action to enrich story ideas before passing to StoryFox:
+    
+    1. Add **Ask for Input**: "Give me a simple story idea"
+    2. Add **Use Model** (ChatGPT):
+       - Prompt: "Expand this into a detailed children's story concept with character traits and setting: `Provided Input`"
+    3. Add **Create Story in StoryFox**:
+       - Story Concept: `Response from Use Model`
+       - Pages: 12 (longer story for richer concept)
+       - Start Generation: true
+    
+    <Tip>
+      This is explicitly mentioned in the intent's description — it works great after AI enrichment!
+    </Tip>
+  </Accordion>
+
+  <Accordion title="Random story from a list">
+    Generate surprise stories from a curated list:
+    
+    1. Add **List**: Enter 5-10 story concepts
+    2. Add **Get Random Item** from the list
+    3. Add **Create Story in StoryFox**:
+       - Story Concept: `Random Item`
+       - Pages: 8
+       - Book Format: (randomize this too if you want variety!)
+       - Start Generation: true
+    
+    Perfect for when you want inspiration without thinking of a new idea.
+  </Accordion>
+
+  <Accordion title="Story from clipboard text">
+    Turn copied text into a story concept:
+    
+    1. Add **Get Clipboard**
+    2. Add **Create Story in StoryFox**:
+       - Story Concept: `Clipboard`
+       - Start Generation: false (review before generating)
+    
+    Copy text from anywhere (a note, a message, a website), run the shortcut, and StoryFox opens with that concept ready.
+  </Accordion>
+
+  <Accordion title="Scheduled morning story">
+    Use Automation to generate a story every morning:
+    
+    1. Go to the **Automation** tab in Shortcuts
+    2. Create a **Time of Day** automation (e.g., 7:00 AM daily)
+    3. Add **Create Story in StoryFox**:
+       - Story Concept: Use a rotating list or random generator
+       - Pages: 6
+       - Start Generation: true
+    
+    Wake up to a fresh story every day!
+  </Accordion>
+</AccordionGroup>
+
+## Supported Siri phrases
+
+StoryFox registers the following voice triggers with Siri:
+
+<CodeGroup>
+
+```text Phrase 1
+"Create a story with StoryFox"
+```
+
+```text Phrase 2
+"Queue a story in StoryFox"
+```
+
+</CodeGroup>
+
+When you say either phrase, Siri will prompt you for the story concept and other parameters based on your shortcut configuration.
+
+<Tip>
+  You can also create custom Siri phrases by adding a "When I say..." automation in Shortcuts.
+</Tip>
+
+## How the app handles queued requests
+
+When you trigger the App Intent, StoryFox uses a simple but robust queue system:
+
+<Steps>
+  <Step title="Intent saves request">
+    The `QueueStoryInStoryFoxIntent` encodes your story parameters into a `ShortcutStoryRequest` and saves it to `UserDefaults` using the key `storyfox.shortcut.pendingRequest`.
+  </Step>
+
+  <Step title="StoryFox opens">
+    The intent sets `openAppWhenRun: true`, so StoryFox launches immediately after queueing.
+  </Step>
+
+  <Step title="App consumes request">
+    On launch, StoryFox's `consumePendingShortcutRequest()` method:
+    - Checks for a pending request in `UserDefaults`
+    - If found, removes it from the queue (consume-once pattern)
+    - Navigates to the creation screen
+    - Populates all form fields with your parameters
+  </Step>
+
+  <Step title="Generation starts (optional)">
+    If you set `autoStart: true`, StoryFox immediately calls `viewModel.squeezeStory()` to begin generating the book.
+    
+    If `false`, the creation screen waits for you to click **Squeeze a Story**.
+  </Step>
+</Steps>
+
+<Tip>
+  **Only one request is queued at a time.** If you trigger the intent again before opening StoryFox, the new request overwrites the previous one. This prevents queue buildup.
+</Tip>
+
+## Automation ideas
+
+Here are some creative ways to use the Shortcuts integration:
+
+<CardGroup cols={2}>
+  <Card title="Voice-controlled creation" icon="microphone">
+    Use Siri to create stories while cooking, driving, or playing with kids — completely hands-free.
+  </Card>
+  
+  <Card title="AI prompt chaining" icon="link">
+    Use ChatGPT or other AI models in Shortcuts to generate and refine story concepts before passing to StoryFox.
+  </Card>
+  
+  <Card title="Scheduled generation" icon="clock">
+    Set up daily or weekly automations to create fresh stories at specific times.
+  </Card>
+  
+  <Card title="Context-based stories" icon="location">
+    Combine with location triggers to create stories based on where you are (e.g., beach stories when at the coast).
+  </Card>
+  
+  <Card title="Quick templates" icon="bolt">
+    Build a collection of one-tap shortcuts for common story types: adventure, friendship, animals, bedtime.
+  </Card>
+  
+  <Card title="Family collaboration" icon="person.3">
+    Create shortcuts that ask multiple family members for input, then combine their ideas into one concept.
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Intent doesn't appear in Shortcuts">
+    Make sure you have StoryFox installed and have opened it at least once. App Intents register when the app first launches.
+    
+    If it still doesn't appear, try:
+    1. Quitting and relaunching Shortcuts
+    2. Restarting your Mac
+    3. Reinstalling StoryFox
+  </Accordion>
+
+  <Accordion title="StoryFox opens but settings aren't populated">
+    This usually means the request was consumed by a previous launch. The queue uses a consume-once pattern, so each request is only processed once.
+    
+    Run your shortcut again to queue a fresh request.
+  </Accordion>
+
+  <Accordion title="Page count is different than what I specified">
+    Page counts are clamped to the valid range (4-16). If you pass an invalid number:
+    - Values below 4 are set to 4
+    - Values above 16 are set to 16
+    - Odd numbers are rounded down to the nearest even number
+  </Accordion>
+
+  <Accordion title="Siri phrases don't work">
+    Make sure:
+    1. Siri is enabled in **System Settings > Siri & Spotlight**
+    2. StoryFox has been granted Shortcuts permissions
+    3. You're using one of the registered phrases exactly as written
+    
+    You can also create custom Siri phrases through the Shortcuts app's automation tab.
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Create your first story" icon="sparkle.magnifyingglass" href="/guides/creating-your-first-story">
+    Learn the basics of story creation in StoryFox
+  </Card>
+  <Card title="Try guided mode" icon="wand.and.stars" href="/guides/guided-mode">
+    Let AI ask questions to enrich your story
+  </Card>
+</CardGroup>

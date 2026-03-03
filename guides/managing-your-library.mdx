@@ -1,0 +1,403 @@
+---
+title: Managing your library
+description: Learn how to organize, favorite, and manage your saved storybooks in StoryFox
+---
+
+Your StoryFox library automatically saves every story you create and provides powerful tools to organize and access them. This guide covers everything you need to know about managing your collection.
+
+## How books are automatically saved
+
+Every time you complete a story in StoryFox, it's automatically saved to your library with full persistence via SwiftData. No manual save action is required.
+
+<Note>
+Books are saved when story generation completes successfully and you reach the reader view. Each book includes the full text, all illustrations, cover image, and metadata about how it was created.
+</Note>
+
+### What gets saved
+
+Each saved book includes:
+
+- **Title and author line** - The story's title and byline
+- **All pages** - Complete text and illustrations for every page
+- **Cover image** - The cover artwork (stored as page 0)
+- **Creation metadata** - Date created, format (standard/square), illustration style
+- **Generation settings** - Which AI models were used for text and images
+- **Original concept** - Your initial story prompt
+- **Character descriptions** - Any character details the AI generated
+
+Here's how StoryFox stores your books (from `StoredStorybook.swift:11-32`):
+
+```swift
+@Model
+final class StoredStorybook {
+    var id: UUID
+    var title: String
+    var authorLine: String
+    var moral: String
+    var createdAt: Date
+    var formatRawValue: String
+    var styleRawValue: String
+    var coverImageData: Data?
+    var isFavorite: Bool = false
+    var displayOrder: Int = 0
+    var characterDescriptions: String = ""
+    var originalConcept: String = ""
+    var textProviderRawValue: String = ""
+    var imageProviderRawValue: String = ""
+    var textModelName: String = ""
+    var imageModelName: String = ""
+    
+    @Relationship(deleteRule: .cascade)
+    var pages: [StoredPage]
+}
+```
+
+## Accessing your library
+
+Your library is always available in the app's sidebar, which displays two sections:
+
+1. **Favorites** - Books you've starred, sorted by your custom order
+2. **Your Storybooks** - All other saved books, sorted by your custom order
+
+### Sidebar layout
+
+The sidebar appears on the left side of the StoryFox window and includes:
+
+- **New Story button** - Returns to the creation screen with a fresh start
+- **Favorites section** - Expandable/collapsible list of starred books
+- **Your Storybooks section** - Expandable/collapsible list of all other books
+
+<Tip>
+You can collapse sections to keep your library organized. StoryFox remembers your preference using `@AppStorage` keys `sidebar.favoritesExpanded` and `sidebar.storybooksExpanded`.
+</Tip>
+
+## Using the favorites feature
+
+Favorites let you highlight your best or most important stories for quick access.
+
+### Starring a book
+
+You have multiple ways to mark a book as a favorite:
+
+**Option 1: Quick star button**
+
+Each book row in the sidebar shows a star icon on the right. Click it to toggle favorite status (from `StoryFoxApp.swift:434-444`):
+
+```swift
+Button {
+    withAnimation(StoryJuicerMotion.standard) {
+        book.isFavorite.toggle()
+        try? modelContext.save()
+    }
+} label: {
+    Image(systemName: book.isFavorite ? "star.fill" : "star")
+        .foregroundStyle(book.isFavorite ? Color.sjGold : Color.sjMuted.opacity(0.5))
+        .contentTransition(.symbolEffect(.replace))
+}
+```
+
+**Option 2: Swipe action**
+
+Swipe left on any book in the "Your Storybooks" section to reveal the favorite button (from `StoryFoxApp.swift:316-326`):
+
+```swift
+.swipeActions(edge: .leading, allowsFullSwipe: true) {
+    Button {
+        withAnimation(StoryJuicerMotion.standard) {
+            book.isFavorite = true
+            try? modelContext.save()
+        }
+    } label: {
+        Label("Favorite", systemImage: "star.fill")
+    }
+    .tint(.sjGold)
+}
+```
+
+**Option 3: Context menu**
+
+Right-click (or long-press) any book to open a context menu with favorite/unfavorite options.
+
+### Unstarring a book
+
+To remove a book from favorites:
+
+- Click the filled star icon in the book row
+- Swipe right on a favorited book to reveal "Unfavorite"
+- Use the context menu to select "Remove from Favorites"
+
+<Note>
+When you unfavorite a book, it automatically moves to the "Your Storybooks" section. The book is never deleted - only its organization changes.
+</Note>
+
+## Reordering books
+
+You can customize the order of books within each section using drag and drop.
+
+### How to reorder
+
+1. Click and hold on any book row in the sidebar
+2. Drag the book up or down within its section (Favorites or Your Storybooks)
+3. Drop it in the desired position
+4. The new order is saved automatically
+
+<Tip>
+Books in different sections (Favorites vs. Your Storybooks) maintain separate ordering. Reordering happens within each section independently.
+</Tip>
+
+### Display order persistence
+
+StoryFox uses a `displayOrder` integer field on each book to maintain your custom sorting (from `StoredStorybook.swift:22`):
+
+```swift
+var displayOrder: Int = 0
+```
+
+When you move books around, the app updates the `displayOrder` value for affected books (from `StoryFoxApp.swift:779-794`):
+
+```swift
+private func moveFavorites(from source: IndexSet, to destination: Int) {
+    var books = Array(favoriteBooks)
+    books.move(fromOffsets: source, toOffset: destination)
+    for (index, book) in books.enumerated() {
+        book.displayOrder = index
+    }
+    try? modelContext.save()
+}
+
+private func moveRegularBooks(from source: IndexSet, to destination: Int) {
+    var books = Array(regularBooks)
+    books.move(fromOffsets: source, toOffset: destination)
+    for (index, book) in books.enumerated() {
+        book.displayOrder = index
+    }
+    try? modelContext.save()
+}
+```
+
+### New book placement
+
+When you create a new story, it automatically appears at the top of "Your Storybooks" with `displayOrder = 0`, and existing books are shifted down (from `StoryFoxApp.swift:677-680`):
+
+```swift
+// Shift existing regular books down so the new one appears at top
+for existing in regularBooks {
+    existing.displayOrder += 1
+}
+```
+
+## Deleting books
+
+You can remove books from your library when you no longer need them.
+
+<Warning>
+Deleting a book is permanent and cannot be undone. The book and all its illustrations will be removed from your device.
+</Warning>
+
+### Delete via swipe action
+
+Swipe right on any book row to reveal the delete button:
+
+```swift
+.swipeActions(edge: .trailing, allowsFullSwipe: true) {
+    Button(role: .destructive) {
+        withAnimation {
+            modelContext.delete(book)
+            try? modelContext.save()
+        }
+    } label: {
+        Label("Delete", systemImage: "trash")
+    }
+}
+```
+
+The swipe action supports full swipe - swipe all the way across to delete immediately without tapping the button.
+
+### Delete via context menu
+
+Right-click (or long-press) any book and select "Delete" from the context menu (from `StoryFoxApp.swift:476-481`):
+
+```swift
+Button(role: .destructive) {
+    modelContext.delete(book)
+    try? modelContext.save()
+} label: {
+    Label("Delete", systemImage: "trash")
+}
+```
+
+### Cascade deletion
+
+When you delete a book, SwiftData automatically removes all associated pages thanks to the cascade delete rule (from `StoredStorybook.swift:30-31`):
+
+```swift
+@Relationship(deleteRule: .cascade)
+var pages: [StoredPage]
+```
+
+This ensures no orphaned page data remains after deletion.
+
+## Opening saved books
+
+Click any book in the sidebar to open it in the reader view.
+
+### What happens when you open a book
+
+1. The book row becomes highlighted with a coral border
+2. StoryFox converts the stored data back to runtime models
+3. The reader view opens with the book ready to read
+4. All illustrations are loaded from stored PNG data
+
+Here's how the app opens a saved book (from `StoryFoxApp.swift:704-730`):
+
+```swift
+private func openSavedBook(_ stored: StoredStorybook) {
+    let book = stored.toStoryBook()
+    let images = stored.toImages()
+    let readerVM = BookReaderViewModel(
+        storyBook: book,
+        images: images,
+        format: stored.format,
+        style: stored.style,
+        generator: IllustrationGenerator()
+    )
+    readerVM.originalConcept = stored.originalConcept
+    readerVM.textProviderName = stored.textProviderRawValue
+    readerVM.imageProviderName = stored.imageProviderRawValue
+    readerVM.textModelName = stored.textModelName
+    readerVM.imageModelName = stored.imageModelName
+    readerVM.storedBookID = stored.id
+    // ... callback setup for regeneration and editing
+    readerViewModel = readerVM
+    route = .reading
+}
+```
+
+### Viewing book details
+
+When a book is open, you can:
+
+- Read through all pages with full illustrations
+- View creation metadata (models used, creation date)
+- Export to PDF or EPUB
+- Regenerate individual illustrations
+- Edit text and prompts (changes are saved automatically)
+
+## Book metadata displayed
+
+Each book row in the sidebar shows key information at a glance:
+
+### Primary metadata
+
+- **Title** - The story's title in bold (from `StoredStorybook.swift:14`)
+- **Creation date** - When the book was created, formatted as abbreviated date and shortened time
+- **Icon** - A book icon that highlights when the book is selected
+
+From the sidebar row implementation (from `StoryFoxApp.swift:421-429`):
+
+```swift
+VStack(alignment: .leading, spacing: 3) {
+    Text(book.title)
+        .font(StoryJuicerTypography.uiBodyStrong)
+        .foregroundStyle(Color.sjGlassInk)
+        .lineLimit(2)
+
+    Text(book.createdAt.formatted(date: .abbreviated, time: .shortened))
+        .font(StoryJuicerTypography.uiMeta)
+        .foregroundStyle(Color.sjSecondaryText)
+}
+```
+
+### Visual indicators
+
+- **Star icon** - Filled gold star for favorites, outlined gray star for regular books
+- **Highlight** - Selected books show a coral-tinted background with border
+- **Hover state** - Interactive glass effect on hover
+
+### Extended metadata
+
+When you open a book, additional metadata is available in the reader view:
+
+- Author line
+- Moral/theme
+- Original story concept prompt
+- Character descriptions
+- Format (standard or square)
+- Illustration style (illustration, sketch, or animation)
+- Text provider and model used
+- Image provider and model used
+
+## Persistence via SwiftData
+
+StoryFox uses Apple's SwiftData framework for robust, automatic persistence.
+
+### SwiftData setup
+
+The app configures SwiftData at launch (from `StoryFoxApp.swift:20`):
+
+```swift
+.modelContainer(for: StoredStorybook.self)
+```
+
+This creates a model container that manages all `StoredStorybook` instances and their related `StoredPage` objects.
+
+### Automatic saving
+
+Your library is automatically saved to disk:
+
+- When you create a new story
+- When you favorite/unfavorite a book
+- When you reorder books
+- When you delete a book
+- When you regenerate an illustration
+- When you edit text
+- When the app moves to the background
+- When the app quits
+
+From the app lifecycle handlers (from `StoryFoxApp.swift:181-186`):
+
+```swift
+.onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+    try? modelContext.save()
+}
+.onReceive(NotificationCenter.default.publisher(for: NSApplication.willResignActiveNotification)) { _ in
+    try? modelContext.save()
+}
+```
+
+### Query and filtering
+
+The sidebar uses SwiftData queries to separate favorites from regular books (from `StoryFoxApp.swift:148-153`):
+
+```swift
+@Query(filter: #Predicate<StoredStorybook> { $0.isFavorite == true },
+       sort: \StoredStorybook.displayOrder) private var favoriteBooks: [StoredStorybook]
+@Query(filter: #Predicate<StoredStorybook> { $0.isFavorite == false },
+       sort: \StoredStorybook.displayOrder) private var regularBooks: [StoredStorybook]
+
+private var allBooks: [StoredStorybook] { favoriteBooks + regularBooks }
+```
+
+These queries automatically update the UI when your library changes - no manual refresh needed.
+
+### Data location
+
+SwiftData stores your library in your app's container directory, managed entirely by the system. You don't need to worry about file paths or manual data management.
+
+<Note>
+Your storybooks are stored locally on your device. They are not synced to iCloud or backed up automatically. If you want to preserve books long-term, export them to PDF or EPUB.
+</Note>
+
+## Tips for library organization
+
+Here are some best practices for keeping your library organized:
+
+1. **Use favorites strategically** - Star your best stories, works in progress, or books you share frequently
+2. **Delete old drafts** - Remove experimental or incomplete stories you won't revisit
+3. **Maintain custom order** - Arrange books by theme, date, or importance using drag and drop
+4. **Export important books** - Save precious stories as PDF files for backup
+5. **Collapse sections** - Minimize sections you're not actively using to reduce sidebar clutter
+
+<Tip>
+If you have many books, keep the "Your Storybooks" section collapsed and only expand "Favorites" for quick access to your most important stories.
+</Tip>

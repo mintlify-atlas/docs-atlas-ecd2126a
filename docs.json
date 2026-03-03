@@ -55,8 +55,11 @@
             "pages": [
               "guides/creating-your-first-story",
               "guides/guided-mode",
+              "guides/author-mode",
               "guides/working-with-characters",
-              "guides/exporting-books"
+              "guides/managing-your-library",
+              "guides/exporting-books",
+              "guides/shortcuts-integration"
             ]
           }
         ]
