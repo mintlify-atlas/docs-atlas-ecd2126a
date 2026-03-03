@@ -1,0 +1,113 @@
+{
+  "projectType": "saas",
+  "projectName": "StoryFox",
+  "projectDescription": "Generate illustrated children's storybooks using on-device Apple AI for macOS 26",
+  "theme": "almond",
+  "primaryColor": "#D4654A",
+  "lightColor": "#E8977F",
+  "darkColor": "#B8543E",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Features",
+            "pages": [
+              "features/story-generation",
+              "features/two-pass-pipeline",
+              "features/illustrations",
+              "features/character-consistency",
+              "features/book-formats",
+              "features/export"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/text-providers",
+              "configuration/image-providers",
+              "configuration/settings"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/creating-your-first-story",
+              "guides/guided-mode",
+              "guides/working-with-characters",
+              "guides/exporting-books"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Development",
+        "groups": [
+          {
+            "group": "Developer Guide",
+            "pages": [
+              "development/architecture",
+              "development/building-from-source",
+              "development/project-structure",
+              "development/generation-pipeline"
+            ]
+          },
+          {
+            "group": "Distribution",
+            "pages": [
+              "development/signing-and-notarization",
+              "development/sparkle-updates",
+              "development/release-workflow"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "reference/models",
+              "reference/view-models",
+              "reference/generators",
+              "reference/make-commands"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Two-pass AI story generation with visual consistency",
+    "On-device Apple Intelligence via FoundationModels and Image Playground",
+    "MLX Swift for local open-weight model inference",
+    "Cloud AI integration with Hugging Face (FLUX, HunyuanImage, GPT-OSS)",
+    "Character consistency engine with automated validation",
+    "Multiple book formats (Standard Square, Landscape, Portrait, Small Square)",
+    "Three illustration styles (Illustration, Animation, Sketch)",
+    "Export to print-ready PDF (300 DPI) or fixed-layout EPUB",
+    "Guided creation mode with multi-round Q&A",
+    "Automatic updates via Sparkle 2 with EdDSA signing"
+  ],
+  "publicApiSurface": [
+    "StoryBook (core @Generable model)",
+    "CreationViewModel (story orchestration)",
+    "BookReaderViewModel (reading & export)",
+    "TextOnlyStoryBook (two-pass text generation)",
+    "ImagePromptSheet (two-pass illustration prompts)",
+    "StoryTextProvider (Apple, MLX, Hugging Face)",
+    "StoryImageProvider (Image Playground, Hugging Face)",
+    "BookFormat (Standard Square, Landscape, Portrait, Small Square)",
+    "IllustrationStyle (Illustration, Animation, Sketch)",
+    "PDFRendering (300 DPI print-ready PDF export)",
+    "EPUBRendering (fixed-layout EPUB 3.0 export)",
+    "CharacterDescriptionValidator (async character repair)",
+    "ImagePromptEnricher (prompt enhancement)",
+    "SoftwareUpdateManager (Sparkle 2 wrapper)"
+  ]
+}
