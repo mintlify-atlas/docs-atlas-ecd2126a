@@ -1,0 +1,316 @@
+---
+title: Signing and notarization
+description: Build signed and notarized DMGs for distribution
+---
+
+StoryFox uses Apple's Developer ID signing and notarization to ensure users can open the app without Gatekeeper warnings.
+
+## Overview
+
+The `make dmg` target automates the full distribution pipeline:
+
+1. Regenerate project with XcodeGen
+2. Archive with Developer ID signing + hardened runtime
+3. Export signed `.app`
+4. Notarize with Apple (`notarytool submit --wait`)
+5. Staple notarization ticket to `.app`
+6. Package DMG with Applications symlink
+7. Notarize and staple the DMG itself
+
+## Prerequisites (one-time setup)
+
+### 1. Developer ID certificate
+
+You need a **Developer ID Application** certificate from your Apple Developer account:
+
+<Steps>
+  <Step title="Open Xcode">
+    Go to **Xcode > Settings > Accounts**
+  </Step>
+
+  <Step title="Select your team">
+    Select your Apple ID and team, then click **Manage Certificates**
+  </Step>
+
+  <Step title="Create certificate">
+    Click **+** and choose **Developer ID Application**
+  </Step>
+</Steps>
+
+Verify the certificate is installed:
+
+```bash
+security find-identity -v -p codesigning
+```
+
+You should see an entry like:
+```
+1) 3F4A... "Developer ID Application: Your Name (TEAM_ID)"
+```
+
+### 2. App-specific password
+
+Create an app-specific password for notarytool:
+
+<Steps>
+  <Step title="Visit appleid.apple.com">
+    Log in and go to **Security > App-Specific Passwords**
+  </Step>
+
+  <Step title="Generate password">
+    Create a password named "StoryFox Notarization"
+  </Step>
+
+  <Step title="Store credentials in Keychain">
+    ```bash
+    xcrun notarytool store-credentials "StoryFox-Notarize" \
+      --apple-id your.email@example.com \
+      --team-id 47347VQHQV \
+      --password xxxx-xxxx-xxxx-xxxx
+    ```
+  </Step>
+</Steps>
+
+<Note>
+Replace `47347VQHQV` with your Team ID (found in your Apple Developer account).
+</Note>
+
+### 3. Update Makefile
+
+Edit the `Makefile` and set your signing identity and team ID:
+
+```makefile Makefile
+SIGN_IDENTITY := "Developer ID Application: Your Name (TEAM_ID)"
+TEAM_ID       := YOUR_TEAM_ID
+NOTARY_PROFILE := StoryFox-Notarize
+```
+
+## Build signed DMG
+
+Once setup is complete, build a distributable DMG:
+
+```bash
+make dmg
+```
+
+This runs the full 7-step pipeline and outputs:
+
+```
+✅ Done! Distributable DMG: dist/StoryFox.dmg
+```
+
+### What happens during `make dmg`
+
+<Steps>
+  <Step title="1. Prepare output directory">
+    Creates `dist/export/` and removes old archives
+  </Step>
+
+  <Step title="2. Regenerate Xcode project">
+    ```bash
+    xcodegen generate
+    ```
+
+    Restores entitlements (XcodeGen overwrites them):
+    ```bash
+    /usr/libexec/PlistBuddy -c "Add :com.apple.security.network.client bool true" \
+      Resources/StoryFox.entitlements
+    /usr/libexec/PlistBuddy -c "Add :com.apple.security.cs.allow-jit bool true" \
+      Resources/StoryFox.entitlements
+    ```
+  </Step>
+
+  <Step title="3. Build Release archive">
+    ```bash
+    xcodebuild archive \
+      -project StoryFox.xcodeproj \
+      -scheme StoryFox \
+      -destination 'generic/platform=macOS' \
+      -archivePath dist/StoryFox.xcarchive \
+      DEVELOPMENT_TEAM=47347VQHQV \
+      CODE_SIGN_IDENTITY="Developer ID Application: Jacob RAINS (47347VQHQV)" \
+      CODE_SIGN_STYLE=Manual \
+      OTHER_CODE_SIGN_FLAGS="--timestamp --options runtime"
+    ```
+  </Step>
+
+  <Step title="4. Export signed app">
+    Creates `dist/ExportOptions.plist`:
+    ```xml
+    <?xml version="1.0" encoding="UTF-8"?>
+    <plist version="1.0">
+    <dict>
+        <key>method</key>
+        <string>developer-id</string>
+        <key>teamID</key>
+        <string>47347VQHQV</string>
+        <key>signingStyle</key>
+        <string>manual</string>
+        <key>signingCertificate</key>
+        <string>Developer ID Application</string>
+    </dict>
+    </plist>
+    ```
+
+    Exports the signed `.app`:
+    ```bash
+    xcodebuild -exportArchive \
+      -archivePath dist/StoryFox.xcarchive \
+      -exportPath dist/export \
+      -exportOptionsPlist dist/ExportOptions.plist
+    ```
+  </Step>
+
+  <Step title="5. Notarize app with Apple">
+    ```bash
+    ditto -c -k --keepParent "dist/export/StoryFox.app" "dist/StoryFox.zip"
+    xcrun notarytool submit "dist/StoryFox.zip" \
+      --keychain-profile "StoryFox-Notarize" \
+      --wait
+    ```
+
+    The `--wait` flag blocks until Apple finishes notarization (usually 1-3 minutes).
+  </Step>
+
+  <Step title="6. Staple notarization ticket">
+    ```bash
+    xcrun stapler staple "dist/export/StoryFox.app"
+    ```
+
+    This embeds the notarization ticket inside the app bundle so it works offline.
+  </Step>
+
+  <Step title="7. Create DMG">
+    ```bash
+    mkdir -p /tmp/storyfox_dmg_staging
+    cp -R "dist/export/StoryFox.app" /tmp/storyfox_dmg_staging/
+    ln -s /Applications /tmp/storyfox_dmg_staging/Applications
+
+    hdiutil create -volname "StoryFox" \
+      -srcfolder /tmp/storyfox_dmg_staging \
+      -ov -format UDZO "dist/StoryFox.dmg"
+
+    xcrun notarytool submit "dist/StoryFox.dmg" \
+      --keychain-profile "StoryFox-Notarize" \
+      --wait
+
+    xcrun stapler staple "dist/StoryFox.dmg"
+    ```
+  </Step>
+</Steps>
+
+## Verify signing and notarization
+
+After the DMG is built, verify it:
+
+### Check code signature
+
+```bash
+codesign -dvv dist/export/StoryFox.app
+```
+
+Look for:
+```
+Authority=Developer ID Application: Your Name (TEAM_ID)
+Format=app bundle with Mach-O universal (arm64)
+CodeDirectory v=20500 size=... flags=0x10000(runtime) hashes=...
+Runtime Version=13.0.0
+```
+
+The `runtime` flag confirms the hardened runtime is enabled.
+
+### Check notarization
+
+```bash
+spctl -a -vv -t install dist/export/StoryFox.app
+```
+
+Expected output:
+```
+dist/export/StoryFox.app: accepted
+source=Notarized Developer ID
+origin=Developer ID Application: Your Name (TEAM_ID)
+```
+
+### Check stapled ticket
+
+```bash
+xcrun stapler validate dist/StoryFox.dmg
+```
+
+Expected output:
+```
+The validate action worked!
+```
+
+## Entitlements
+
+StoryFox requires these entitlements for network access and JIT compilation (needed by MLX):
+
+```xml Resources/StoryFox.entitlements
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+</dict>
+</plist>
+```
+
+<Warning>
+`xcodegen generate` can overwrite this file to an empty `<dict/>`. The `make dmg` target automatically restores entitlements. Always verify entitlements after regenerating the project.
+</Warning>
+
+## Troubleshooting
+
+### Error: "No valid Developer ID certificate found"
+
+**Solution:** Install a Developer ID Application certificate in Xcode (see Prerequisites above).
+
+### Error: "The operation couldn't be completed. Unable to validate your application."
+
+**Cause:** Entitlements file is empty or invalid.
+
+**Solution:** Verify `Resources/StoryFox.entitlements` contains the required keys, then rebuild:
+```bash
+make clean
+make dmg
+```
+
+### Error: "Notarization failed with status: Invalid"
+
+**Solution:** Check the notarization log:
+```bash
+xcrun notarytool log <submission-id> --keychain-profile "StoryFox-Notarize"
+```
+
+Common issues:
+- Missing or invalid entitlements
+- Unsigned nested frameworks
+- Code signature mismatch
+
+### Error: "The ticket in the app is not valid"
+
+**Cause:** Stapling failed or ticket expired.
+
+**Solution:** Re-staple the app:
+```bash
+xcrun stapler staple dist/export/StoryFox.app
+xcrun stapler staple dist/StoryFox.dmg
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Sparkle updates" href="/development/sparkle-updates" icon="arrow-up">
+    Configure auto-update system
+  </Card>
+  <Card title="Release workflow" href="/development/release-workflow" icon="rocket">
+    Automate the full release pipeline
+  </Card>
+</CardGroup>

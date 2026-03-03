@@ -1,80 +1,180 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Create your first illustrated storybook with StoryFox in under 5 minutes
 ---
 
-## Get started in three steps
+Get up and running with StoryFox by creating your first complete illustrated children's book from concept to finished product.
 
-Get your documentation site running locally and make your first customization.
+## Before you start
 
-### Step 1: Set up your local environment
+Ensure you have:
+
+- **macOS 26** (Tahoe) running on Apple Silicon
+- **Apple Intelligence** enabled on your device
+- **StoryFox** installed from the [latest DMG](https://github.com/jakerains/StoryFox/releases/latest)
+
+<Tip>
+  For cloud generation features, you'll need a free Hugging Face account. You can configure this in Settings after your first story.
+</Tip>
+
+## Create your first story
+
+<Steps>
+  <Step title="Launch StoryFox">
+    Open StoryFox from your Applications folder. You'll see the creation screen with a large text input field.
+  </Step>
+
+  <Step title="Enter a story idea">
+    Type your story concept into the main text field. For your first story, try:
+    
+    ```
+    A brave little robot who learns to make friends at robot school
+    ```
+    
+    <Note>
+      If you wait a few seconds, StoryFox will cycle through suggested story ideas using a typewriter animation. Click any suggestion to use it.
+    </Note>
+  </Step>
+
+  <Step title="Configure your book">
+    Click the **wand and stars** icon to open Book Setup and customize:
+    
+    - **Page count**: Choose 4-16 pages (default: 8)
+    - **Format**: Standard Square, Landscape, Portrait, or Small Square
+    - **Illustration style**: Illustration, Animation, or Sketch
+    
+    For your first book, the defaults work great.
+  </Step>
+
+  <Step title="Start generation">
+    Click the **Squeeze a Story** button. StoryFox will begin the generation process:
+    
+    <AccordionGroup>
+      <Accordion title="Phase 1: Generating text" icon="text.alignleft">
+        The AI creates your complete story including:
+        - Title and author line
+        - Character descriptions with visual details
+        - Story text for each page (2-4 sentences)
+        - Image prompts for every page
+        
+        Watch partial text stream in as the story is written (`CreationViewModel.swift:190`).
+      </Accordion>
+      
+      <Accordion title="Phase 2: Validating characters" icon="checkmark.circle">
+        StoryFox runs Foundation Model validation to ensure character descriptions are complete and consistent (`CreationViewModel.swift:215-226`).
+        
+        The system parses character names, species, colors, and traits to inject into every image prompt.
+      </Accordion>
+      
+      <Accordion title="Phase 3: Generating images" icon="photo.on.rectangle">
+        Illustrations generate concurrently for:
+        - Cover page (based on title and concept)
+        - All story pages (one per page)
+        
+        Progress updates show completed/total count as images finish (`CreationViewModel.swift:306-338`).
+      </Accordion>
+    </AccordionGroup>
+    
+    <Info>
+      Generation takes 2-5 minutes depending on page count and whether you're using on-device or cloud models.
+    </Info>
+  </Step>
+
+  <Step title="Read your book">
+    When generation completes, your book opens automatically in the reader. Use:
+    
+    - **Arrow keys** or **swipe gestures** to navigate pages
+    - **Full-screen button** to hide the sidebar
+    - **Page grid** to jump to any page
+  </Step>
+
+  <Step title="Export and share">
+    Click the **export** icon in the reader toolbar and choose:
+    
+    - **PDF** — 300 DPI print-ready file
+    - **EPUB** — Fixed-layout EPUB 3.0 for digital readers
+    
+    Select a location and save your finished book.
+  </Step>
+</Steps>
+
+## Understanding generation modes
+
+StoryFox offers multiple text generation providers (`CreationViewModel.swift:98-112`):
+
+| Provider | Type | When to use |
+|----------|------|-------------|
+| **Apple FoundationModels** | On-device | Default — works offline, no API key needed |
+| **MLX Swift** | On-device | Run open-weight models locally (Qwen3, LFM2.5) |
+| **Hugging Face Inference** | Cloud | Access larger models (GPT-OSS 120B, DeepSeek V3) |
+
+<Tip>
+  Start with Apple FoundationModels for your first story. It requires no setup and runs entirely on your Mac.
+</Tip>
+
+## What makes StoryFox different?
+
+### Two-pass generation pipeline
+
+Every story uses a two-pass process for better quality (`CreationViewModel.swift:188-245`):
+
+1. **Pass 1** — AI writes complete story text with character descriptions
+2. **Pass 2** — With full context, AI generates image prompts that maintain visual consistency across all pages
+
+This means page 1 knows what happens on page 8 — characters look the same throughout.
+
+### Character consistency
+
+StoryFox parses character entries to extract (`CreationViewModel.swift:229-232`):
+- Character names
+- Species (dog, fox, robot, etc.)
+- Visual traits (colors, clothing, accessories)
+- Distinguishing features
+
+These details are mechanically injected into every image prompt, ensuring your brave little robot looks the same on every page.
+
+## Troubleshooting
 
 <AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+  <Accordion title="Safety filter blocked my concept">
+    Apple's safety guardrails may block certain concepts. If you see a guardrail violation error (`CreationViewModel.swift:360-365`):
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
+    - Rephrase with gentler, child-friendly language
+    - Avoid words that might trigger content filters
+    - Focus on positive themes and outcomes
   </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+  
+  <Accordion title="Model unavailable error">
+    For on-device generation (`CreationViewModel.swift:114-136`):
+    - Verify Apple Intelligence is enabled in System Settings
+    - Ensure you're running macOS 26 on Apple Silicon
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
+    For cloud generation:
+    - Add Hugging Face credentials in Settings
+    - Check your internet connection
   </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
+  
+  <Accordion title="Generation is taking too long">
+    - On-device generation is slower but private (2-5 minutes)
+    - Cloud generation is faster (1-3 minutes)
+    - More pages = longer generation time
+    - Image generation runs concurrently to maximize speed
   </Accordion>
 </AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Try guided mode" icon="sparkle.magnifyingglass" href="/guides/guided-mode">
+    Let AI ask questions to enrich your story concept
+  </Card>
+  <Card title="Configure providers" icon="gear" href="/configuration/text-providers">
+    Set up cloud models for faster generation
+  </Card>
+  <Card title="Learn about formats" icon="book" href="/features/book-formats">
+    Choose the right book size for your story
+  </Card>
+  <Card title="Export options" icon="arrow.down.doc" href="/guides/exporting-books">
+    Save as PDF or EPUB to print or share
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

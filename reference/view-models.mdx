@@ -1,0 +1,406 @@
+---
+title: View models
+description: Observable view models for story creation and book reading
+---
+
+StoryFox uses `@Observable` view models to orchestrate story generation, illustration, and book reading. All view models are defined in `Shared/ViewModels/`.
+
+## CreationViewModel
+
+Orchestrates the full story generation pipeline: text generation, character validation, image prompt analysis, and concurrent illustration generation.
+
+### State properties
+
+<ResponseField name="storyConcept" type="String">
+  User's story idea or prompt
+</ResponseField>
+
+<ResponseField name="pageCount" type="Int">
+  Number of pages to generate (default: `GenerationConfig.defaultPages`)
+</ResponseField>
+
+<ResponseField name="selectedFormat" type="BookFormat">
+  Chosen book format (default: `.standard`)
+</ResponseField>
+
+<ResponseField name="selectedStyle" type="IllustrationStyle">
+  Chosen illustration style (default: `.illustration`)
+</ResponseField>
+
+<ResponseField name="isEnrichedConcept" type="Bool">
+  Whether the concept came from the Q&A enrichment flow (affects character limits)
+</ResponseField>
+
+<ResponseField name="phase" type="GenerationPhase">
+  Current generation phase:
+  - `.idle` - Ready to generate
+  - `.generatingText(partialText: String)` - Generating story text
+  - `.generatingCharacterSheet` - Creating character reference (Premium Plus)
+  - `.generatingImages(completedCount: Int, totalCount: Int)` - Generating illustrations
+  - `.complete` - Generation finished
+  - `.failed(String)` - Error occurred
+</ResponseField>
+
+<ResponseField name="storyBook" type="StoryBook?">
+  The generated storybook after text generation completes
+</ResponseField>
+
+<ResponseField name="generatedImages" type="[Int: CGImage]">
+  Generated illustrations keyed by index (0 = cover, 1+ = page numbers)
+</ResponseField>
+
+<ResponseField name="parsedCharacters" type="[ImagePromptEnricher.CharacterEntry]">
+  Character entries parsed by Foundation Model for consistent visual injection
+</ResponseField>
+
+<ResponseField name="characterPhotos" type="[CharacterPhotoReference]">
+  User-uploaded reference photos for premium character consistency (Premium Plus only)
+</ResponseField>
+
+<ResponseField name="characterSheetImage" type="CGImage?">
+  Generated character reference sheet used to anchor visual consistency (Premium Plus only)
+</ResponseField>
+
+### Computed properties
+
+<ResponseField name="canGenerate" type="Bool">
+  Returns `true` if there's a concept or active suggestion and generation is not already running
+</ResponseField>
+
+<ResponseField name="canIllustrateAuthorStory" type="Bool">
+  Returns `true` if Author Mode has a title and at least one page with content
+</ResponseField>
+
+<ResponseField name="isAvailable" type="Bool">
+  Whether the selected text provider is configured and ready
+</ResponseField>
+
+<ResponseField name="unavailabilityReason" type="String?">
+  Human-readable reason if the provider is unavailable (e.g., "OpenRouter API key not configured")
+</ResponseField>
+
+### Methods
+
+<ParamField path="squeezeStory()" type="func">
+  Main generation entry point. Validates the concept, routes to the appropriate text generator, enriches image prompts via Foundation Models (on-device path), generates character sheet (Premium Plus), then generates all illustrations concurrently.
+
+  **Flow:**
+  1. Validate concept with `ContentSafetyPolicy`
+  2. Generate story text via routing (`StoryGenerator`, `CloudTextGenerator`, or `MLXStoryGenerator`)
+  3. Repair character descriptions with Foundation Model (on-device only)
+  4. Parse character entries with Foundation Model (on-device only)
+  5. Analyze image prompts for species consistency (on-device only)
+  6. Enrich prompts with character visual traits
+  7. Generate character sheet (Premium Plus only)
+  8. Generate illustrations (cover + all pages)
+  9. Transition to `.complete` or `.failed`
+</ParamField>
+
+<ParamField path="illustrateAuthorStory()" type="func">
+  Author Mode generation. Assembles a `StoryBook` from user-written text, generates image prompts via `AuthorImagePromptGenerator`, runs enrichment pipeline, then generates illustrations.
+</ParamField>
+
+<ParamField path="generateSuggestions()" type="func">
+  Generates prompt suggestions using `SuggestionGenerator` and starts the typewriter cycle
+</ParamField>
+
+<ParamField path="stopSuggestionCycle()" type="func">
+  Cancels the typewriter animation and clears active suggestion
+</ParamField>
+
+<ParamField path="restartSuggestionCycleAfterDelay()" type="func">
+  Restarts the suggestion cycle after 1.5s if the concept field is still empty
+</ParamField>
+
+<ParamField path="cancel()" type="func">
+  Cancels all active generation tasks and resets to `.idle`
+</ParamField>
+
+<ParamField path="reset()" type="func">
+  Cancels generation and clears all results (storybook, images, author mode fields)
+</ParamField>
+
+<ParamField path="syncTextProgress()" type="func">
+  Observes `storyGenerator.state` and relays partial text to `phase` for UI updates
+</ParamField>
+
+### Example usage
+
+```swift
+let viewModel = CreationViewModel()
+viewModel.storyConcept = "A brave squirrel who explores the forest"
+viewModel.pageCount = 8
+viewModel.selectedFormat = .standard
+viewModel.selectedStyle = .illustration
+viewModel.squeezeStory()
+
+// Observe phase changes
+switch viewModel.phase {
+case .generatingText(let partial):
+    print("Generating: \(partial)")
+case .generatingImages(let completed, let total):
+    print("Images: \(completed)/\(total)")
+case .complete:
+    print("Done! Book: \(viewModel.storyBook?.title ?? "")")
+case .failed(let error):
+    print("Error: \(error)")
+default:
+    break
+}
+```
+
+## BookReaderViewModel
+
+Manages navigation, image regeneration, and text editing for the book reader interface.
+
+### State properties
+
+<ResponseField name="storyBook" type="StoryBook">
+  The current storybook being displayed
+</ResponseField>
+
+<ResponseField name="images" type="[Int: CGImage]">
+  Illustrations keyed by index (0 = cover, 1+ = page numbers)
+</ResponseField>
+
+<ResponseField name="format" type="BookFormat">
+  Book format (affects aspect ratio for regeneration)
+</ResponseField>
+
+<ResponseField name="illustrationStyle" type="IllustrationStyle">
+  Illustration style (used for regeneration)
+</ResponseField>
+
+<ResponseField name="parsedCharacters" type="[ImagePromptEnricher.CharacterEntry]">
+  Pre-parsed character entries for visual consistency during regeneration
+</ResponseField>
+
+<ResponseField name="currentPage" type="Int">
+  Current page index (0 = title page, 1..n = story pages, n+1 = "The End" page)
+</ResponseField>
+
+<ResponseField name="navigatingForward" type="Bool">
+  Whether the last page turn was forward (for transition direction)
+</ResponseField>
+
+<ResponseField name="regeneratingPages" type="Set<Int>">
+  Set of page indices currently being regenerated
+</ResponseField>
+
+<ResponseField name="regenerationErrors" type="[Int: String]">
+  Error messages keyed by page index
+</ResponseField>
+
+<ResponseField name="lastRegenerationError" type="String?">
+  Most recent regeneration error for UI display
+</ResponseField>
+
+<ResponseField name="regeneratingText" type="Set<Int>">
+  Set of page numbers currently regenerating text
+</ResponseField>
+
+<ResponseField name="textRegenerationErrors" type="[Int: String]">
+  Text regeneration error messages keyed by page number
+</ResponseField>
+
+<ResponseField name="originalConcept" type="String">
+  The original user concept that generated this story
+</ResponseField>
+
+<ResponseField name="textProviderName" type="String">
+  Provider used for text generation (for display)
+</ResponseField>
+
+<ResponseField name="imageProviderName" type="String">
+  Provider used for image generation (for display)
+</ResponseField>
+
+<ResponseField name="textModelName" type="String">
+  Specific text model identifier
+</ResponseField>
+
+<ResponseField name="imageModelName" type="String">
+  Specific image model identifier
+</ResponseField>
+
+<ResponseField name="storedBookID" type="UUID?">
+  UUID of the corresponding `StoredStorybook`, if persisted
+</ResponseField>
+
+### Computed properties
+
+<ResponseField name="totalPages" type="Int">
+  Title page + story pages + "The End" page
+</ResponseField>
+
+<ResponseField name="isFirstPage" type="Bool">
+  `true` if on the title page
+</ResponseField>
+
+<ResponseField name="isLastPage" type="Bool">
+  `true` if on the "The End" page
+</ResponseField>
+
+<ResponseField name="isTitlePage" type="Bool">
+  `true` if `currentPage == 0`
+</ResponseField>
+
+<ResponseField name="isEndPage" type="Bool">
+  `true` if `currentPage == totalPages - 1`
+</ResponseField>
+
+<ResponseField name="currentStoryPage" type="StoryPage?">
+  The story page for the current position (nil if title or end page)
+</ResponseField>
+
+<ResponseField name="currentImage" type="CGImage?">
+  The image for the current page (cover at index 0, page images by page number)
+</ResponseField>
+
+<ResponseField name="allImageIndices" type="[Int]">
+  All indices that should have an image (cover + page numbers)
+</ResponseField>
+
+<ResponseField name="missingImageIndices" type="[Int]">
+  Indices missing an image and not currently regenerating
+</ResponseField>
+
+<ResponseField name="conceptDecompositionsForPage" type="[Int: ImageConceptDecomposition]">
+  Concept decompositions from the illustration generator (for debugging)
+</ResponseField>
+
+### Callbacks
+
+<ResponseField name="onImageRegenerated" type="((Int, CGImage) -> Void)?">
+  Called after a single image is regenerated, passing `(imageIndex, newImage)`
+</ResponseField>
+
+<ResponseField name="onTextEdited" type="((StoryBook) -> Void)?">
+  Called after story text is edited, passing the updated `StoryBook`
+</ResponseField>
+
+<ResponseField name="onPageTurnRequested" type="((Int, Int, PageTurnDirection) -> Void)?">
+  Called when a page turn is requested. Parameters: `(fromPage, toPage, direction)`. The view should animate the turn and then call `commitPageChange(to:)`.
+</ResponseField>
+
+### Navigation methods
+
+<ParamField path="nextPage()" type="func">
+  Advances to the next page if not on the last page. Calls `onPageTurnRequested` if set, otherwise updates `currentPage` directly.
+</ParamField>
+
+<ParamField path="previousPage()" type="func">
+  Goes back to the previous page if not on the first page
+</ParamField>
+
+<ParamField path="goToPage(_:)" type="func">
+  Jumps to a specific page index with appropriate transition direction
+</ParamField>
+
+<ParamField path="commitPageChange(to:)" type="func">
+  Commits a page change after the turn animation completes
+</ParamField>
+
+### Page accessor methods
+
+<ParamField path="storyPage(at:)" type="func">
+  Returns the `StoryPage` for a given page index, or nil if it's the title/end page
+</ParamField>
+
+<ParamField path="image(at:)" type="func">
+  Returns the image for a given page index
+</ParamField>
+
+<ParamField path="isTitlePage(at:)" type="func">
+  Whether the given page index is the title page
+</ParamField>
+
+<ParamField path="isEndPage(at:)" type="func">
+  Whether the given page index is the "The End" page
+</ParamField>
+
+### Editing methods
+
+<ParamField path="updateAuthorLine(_:)" type="func">
+  Updates the author line and calls `onTextEdited`
+</ParamField>
+
+<ParamField path="updateMoral(_:)" type="func">
+  Updates the story moral and calls `onTextEdited`
+</ParamField>
+
+<ParamField path="updatePageText(pageNumber:newText:)" type="func">
+  Updates the text for a specific page and calls `onTextEdited`
+</ParamField>
+
+### Regeneration methods
+
+<ParamField path="regenerateImage(index:customPrompt:)" type="async func">
+  Regenerates a single image at the given index. Optionally accepts a custom prompt override. Uses Foundation Model for prompt analysis, enriches with character traits, and calls `illustrationGenerator.generateSingleImage()`.
+
+  **Parameters:**
+  - `index: Int` - Image index (0 = cover, 1+ = page numbers)
+  - `customPrompt: String?` - Optional custom prompt override
+
+  **Retry behavior:** Each retry increments the variant index to avoid replaying failed prompts.
+</ParamField>
+
+<ParamField path="regeneratePageText(pageNumber:)" type="async func">
+  Regenerates both the text and imagePrompt for a single page using the on-device LLM. Uses surrounding page context to maintain narrative flow.
+
+  **Parameters:**
+  - `pageNumber: Int` - The page number to regenerate
+
+  **Context:** Builds context from surrounding pages (previous/next text) and instructs the LLM to rewrite the page text and generate a fresh illustration prompt.
+</ParamField>
+
+<ParamField path="regeneratePage(index:)" type="async func">
+  Legacy method that regenerates an image without custom prompt. Calls `regenerateImage(index:customPrompt:)` internally.
+</ParamField>
+
+<ParamField path="regenerateAllMissing()" type="func">
+  Spawns concurrent tasks to regenerate all missing images
+</ParamField>
+
+### Example usage
+
+```swift
+let viewModel = BookReaderViewModel(
+    storyBook: book,
+    images: images,
+    format: .standard,
+    style: .illustration,
+    generator: illustrationGenerator
+)
+viewModel.parsedCharacters = parsedCharacters
+viewModel.originalConcept = "A brave squirrel"
+
+// Navigate
+viewModel.nextPage()
+viewModel.previousPage()
+viewModel.goToPage(5)
+
+// Edit text
+viewModel.updatePageText(pageNumber: 3, newText: "The squirrel climbed higher.")
+
+// Regenerate an image
+await viewModel.regenerateImage(index: 3)
+
+// Regenerate with custom prompt
+await viewModel.regenerateImage(index: 3, customPrompt: "A red squirrel jumping between trees")
+
+// Regenerate page text
+await viewModel.regeneratePageText(pageNumber: 3)
+```
+
+## PageTurnDirection
+
+Enum defining the direction of a page turn for animation purposes.
+
+<ResponseField name="forward" type="PageTurnDirection">
+  Page turn moving toward the end of the book
+</ResponseField>
+
+<ResponseField name="backward" type="PageTurnDirection">
+  Page turn moving toward the beginning of the book
+</ResponseField>

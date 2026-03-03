@@ -1,0 +1,208 @@
+---
+title: Architecture
+description: Learn about StoryFox's Swift 6 architecture and design patterns
+---
+
+StoryFox is built with modern Swift patterns using SwiftUI, Swift 6 strict concurrency, and Apple's new FoundationModels framework.
+
+## Overview
+
+The app follows a clean architecture with separation between models, generation logic, view models, and UI:
+
+```
+StoryFoxApp.swift                       App entry point + NavigationSplitView routing
++-- Shared/
+|   +-- Models/                         StoryBook (@Generable), BookFormat, IllustrationStyle,
+|   |                                   TextOnlyStoryBook, ImagePromptSheet (two-pass structs)
+|   +-- Generation/                     Text & image generators, two-pass pipeline, PDF/EPUB,
+|   |                                   prompt templates, content safety, prompt enrichment
+|   +-- ViewModels/                     CreationViewModel, BookReaderViewModel
+|   +-- Views/Components/              Theme colors, glass-morphism UI, shared controls
+|   +-- Utilities/                      Keychain, OAuth, settings, diagnostics, issue reports
++-- macOS/
+|   +-- Views/                          Creation, reader, settings, export, test harness
+|   +-- SoftwareUpdateManager.swift     Sparkle 2 auto-update wrapper
+|   +-- PDFRenderer+macOS.swift         Core Graphics PDF rendering at 300 DPI
++-- landing/                            Next.js 15 landing page (storyfox.app)
+```
+
+## Swift 6 patterns
+
+### Observable classes with MainActor isolation
+
+StoryFox uses Swift 6's `@Observable` macro instead of the older `ObservableObject` protocol:
+
+```swift StoryFoxApp.swift
+@Observable
+@MainActor
+final class CreationViewModel {
+    var storyConcept: String = ""
+    var pageCount: Int = GenerationConfig.defaultPages
+    private(set) var phase: GenerationPhase = .idle
+    private(set) var storyBook: StoryBook?
+    // ...
+}
+```
+
+**Key differences from ObservableObject:**
+- Use `@Observable` + `@MainActor` (not `@ObservableObject`)
+- Use `@Bindable` in child views (not `@ObservedObject`)
+- All properties are automatically observable — no `@Published` needed
+- Main actor isolation is explicit and enforced by the compiler
+
+### Structured LLM output with @Generable
+
+StoryFox leverages Apple's `@Generable` macro for type-safe structured output from Foundation Models:
+
+```swift Shared/Models/StoryBook.swift
+@Generable
+struct StoryBook {
+    @Guide(description: "A captivating title for this children's storybook")
+    var title: String
+
+    @Guide(description: "The author attribution line. Always use 'Written by StoryFox'...")
+    var authorLine: String
+
+    @Guide(description: "A one-sentence summary of the story's moral or theme")
+    var moral: String
+
+    @Guide(description: "A brief visual reference for each main character...")
+    var characterDescriptions: String
+
+    @Guide(description: "The story pages array — you MUST generate the exact number of pages requested.")
+    var pages: [StoryPage]
+}
+```
+
+**Benefits:**
+- No manual JSON parsing or validation
+- Compile-time type safety for LLM responses
+- Self-documenting schema with `@Guide` descriptions
+- Works with both on-device and cloud models
+
+## Platform support
+
+StoryFox is **macOS-first**. The iOS target exists in `project.yml` but is on hold:
+
+- `Shared/` code is compatible with both platforms
+- Platform-specific code lives in `macOS/` and `iOS/`
+- Sparkle updates are macOS-only
+- Do not mention iOS in user-facing copy unless explicitly asked
+
+## Design system
+
+StoryFox uses a custom "glass-morphism" design system with consistent tokens:
+
+### Color palette
+
+Defined in `Shared/Views/Components/Color+Theme.swift`:
+
+- **sjCoral** — primary accent (buttons, highlights)
+- **sjGold** — favorites and premium features
+- **sjGlassInk** — primary text on glass surfaces
+- **sjSecondaryText** — secondary labels
+- **sjPaperTop/sjPaperBottom** — gradient backgrounds
+- **sjBackground** — base canvas color
+
+### Glass components
+
+```swift
+View.sjGlassCard(
+    tint: .sjCoral.opacity(StoryJuicerGlassTokens.Tint.standard),
+    interactive: true,
+    cornerRadius: StoryJuicerGlassTokens.Radius.card
+)
+```
+
+<Note>
+Avoid inline color literals. Always use the theme tokens in `Color+Theme.swift`.
+</Note>
+
+## Concurrency and isolation
+
+### MainActor usage
+
+All view models and UI-facing generators are `@MainActor` isolated:
+
+```swift
+@Observable
+@MainActor
+final class IllustrationGenerator {
+    private(set) var state: IllustrationGenerationState = .idle
+    private(set) var generatedImages: [Int: CGImage] = [:]
+    // ...
+}
+```
+
+### Background work
+
+Long-running generation tasks run on background actors but publish progress to `@MainActor` callbacks:
+
+```swift
+func generateIllustrations(
+    for pages: [StoryPage],
+    onImageReady: @MainActor @Sendable (Int, CGImage) -> Void
+) async throws {
+    // Work runs off main thread, progress updates on main
+}
+```
+
+## Navigation flow
+
+The app uses a state machine with three phases:
+
+```
+.creation  -->  .generating  -->  .reading
+   |                |                 |
+   |  Story idea    |  Pass 1: text   |  Page-by-page reader
+   |  Format pick   |  Pass 2: art    |  PDF / EPUB export
+   |  Style pick    |  Images render  |  Edit & regenerate
+   |  Guided Q&A    |  Progress grid  |  Issue reporting
+```
+
+Routing is handled in `StoryFoxApp.swift`:
+
+```swift StoryFoxApp.swift
+enum AppRoute: Hashable {
+    case creation
+    case generating
+    case reading
+}
+
+struct MainView: View {
+    @State private var route: AppRoute = .creation
+    @State private var viewModel = CreationViewModel()
+
+    var body: some View {
+        NavigationSplitView {
+            sidebar
+        } detail: {
+            switch route {
+            case .creation: MacCreationView(viewModel: viewModel)
+            case .generating: MacGenerationProgressView(viewModel: viewModel)
+            case .reading: MacBookReaderView(viewModel: readerViewModel)
+            }
+        }
+    }
+}
+```
+
+## Persistence
+
+StoryFox uses SwiftData for persistence:
+
+- **StoredStorybook** — `@Model` class for saved books
+- **StoredPage** — child model for individual pages
+- Saved books appear in the sidebar with favorites at the top
+- Images are stored as PNG `Data` in the SwiftData model
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Project structure" href="/development/project-structure" icon="folder-tree">
+    Explore the detailed file organization
+  </Card>
+  <Card title="Generation pipeline" href="/development/generation-pipeline" icon="wand-magic-sparkles">
+    Learn how stories and images are generated
+  </Card>
+</CardGroup>

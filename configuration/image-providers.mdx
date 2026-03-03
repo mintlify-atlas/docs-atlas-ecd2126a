@@ -1,0 +1,241 @@
+---
+title: Image providers
+description: Configure AI models for story illustration generation
+---
+
+StoryFox generates custom illustrations for every page of your story. Choose from on-device image generation with Apple's Image Playground or cloud-based diffusion models.
+
+## Available providers
+
+<Tabs>
+  <Tab title="Image Playground">
+    ### On-device illustration with Apple Intelligence
+
+    Image Playground is Apple's built-in image generation model, running entirely on your Mac.
+
+    **Requirements:**
+    - Apple Silicon (M1 or newer)
+    - macOS 26 or later
+    - Apple Intelligence enabled
+
+    **Benefits:**
+    - Complete privacy — all processing happens on-device
+    - No API costs
+    - Supports multiple illustration styles:
+      - **Sketch** — Hand-drawn pencil illustrations
+      - **Illustration** — Vibrant digital art
+      - **Watercolor** — Soft, painterly illustrations
+
+    **Setup:**
+
+    No configuration needed. Image Playground is available by default on supported systems.
+
+    **Generation details:**
+
+    Image Playground uses multi-concept generation to improve character consistency. StoryFox extracts ranked concepts (character details, setting, action) from each page's image prompt and passes them as separate `.text()` inputs to the model.
+
+    <Note>
+      Image Playground commonly returns square outputs. StoryFox applies layout directives to nudge composition for better landscape/portrait framing after aspect normalization.
+    </Note>
+
+    **Timeout:**
+
+    Image Playground generation times out after 120 seconds per image (configurable in `GenerationConfig.imagePlaygroundGenerationTimeoutSeconds`).
+  </Tab>
+
+  <Tab title="Hugging Face">
+    ### Free cloud image generation
+
+    Hugging Face provides access to FLUX and other diffusion models through their Inference API.
+
+    **Benefits:**
+    - Free tier available
+    - No credit card required
+    - Access to state-of-the-art diffusion models
+    - OAuth sign-in support
+
+    **Default model:**
+    - `black-forest-labs/FLUX.1-schnell` — Fast FLUX variant optimized for inference
+
+    **Setup:**
+
+    <Tabs>
+      <Tab title="OAuth (Recommended)">
+        <Steps>
+          <Step title="Create a Hugging Face account">
+            Visit [huggingface.co/join](https://huggingface.co/join) and create a free account.
+          </Step>
+
+          <Step title="Sign in to StoryFox">
+            Open **Settings → Cloud** and click the **Sign in with Hugging Face** button.
+          </Step>
+
+          <Step title="Authorize StoryFox">
+            A browser window opens. Click **Authorize** to grant StoryFox access to the Hugging Face Inference API.
+          </Step>
+
+          <Step title="Select Hugging Face provider">
+            Open **Settings → General** and set **Image Provider** to **Hugging Face**.
+          </Step>
+        </Steps>
+      </Tab>
+
+      <Tab title="API Token">
+        <Steps>
+          <Step title="Generate an API token">
+            Visit [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) and create a new token with **Inference** scope.
+          </Step>
+
+          <Step title="Save the token">
+            Open **Settings → Cloud → Hugging Face** and expand **Use an API token instead**. Paste your token and click **Save Key**.
+          </Step>
+
+          <Step title="Select Hugging Face provider">
+            Open **Settings → General** and set **Image Provider** to **Hugging Face**.
+          </Step>
+        </Steps>
+      </Tab>
+    </Tabs>
+
+    <Note>
+      OAuth tokens are stored securely in the macOS Keychain under service `com.jakerains.StoryFox.cloud.huggingFace`.
+    </Note>
+  </Tab>
+
+  <Tab title="Diffusers (Local)">
+    ### Local FLUX models via Diffusers runtime
+
+    Run FLUX diffusion models locally using the Diffusers runtime. Models download from Hugging Face on first use.
+
+    **Requirements:**
+    - Apple Silicon (M3 or newer recommended)
+    - At least 16GB RAM
+    - Internet connection for model download
+
+    **Curated models:**
+
+    | Model | Size | Details |
+    |-------|------|----------|
+    | `black-forest-labs/FLUX.2-klein-4B` | 4B | Fast distilled FLUX.2 model tuned for local generation |
+    | `black-forest-labs/FLUX.2-klein-base-4B` | 4B | Base FLUX.2 klein variant with broader editing behavior |
+
+    **Setup:**
+
+    <Steps>
+      <Step title="Select Diffusers provider">
+        Open **Settings → General** and set **Image Provider** to **Diffusers (FLUX.2 Local)**.
+      </Step>
+
+      <Step title="Choose a model">
+        The default model is `black-forest-labs/FLUX.2-klein-4B`. Change this in `ModelSelectionSettings.defaultDiffusersModelID` if needed.
+      </Step>
+    </Steps>
+
+    <Warning>
+      Diffusers provider is currently hidden in the UI (`GeneralSettingsTab.swift:47`). Re-enable by removing the `.diffusers` filter to expose this option.
+    </Warning>
+  </Tab>
+
+  <Tab title="OpenRouter (Advanced)">
+    ### Access cloud image models
+
+    OpenRouter provides access to image generation models including FLUX.1 Pro and other premium diffusion models.
+
+    **Default model:**
+    - `google/gemini-3-pro-image-preview` — Google's multimodal image generation
+
+    **Setup:**
+
+    <Steps>
+      <Step title="Get an API key">
+        Visit [openrouter.ai/keys](https://openrouter.ai/keys) and create an API key.
+      </Step>
+
+      <Step title="Add credits">
+        OpenRouter requires prepaid credits. Add funds at [openrouter.ai/credits](https://openrouter.ai/credits).
+      </Step>
+
+      <Step title="Save the key">
+        Open **Settings → Cloud → OpenRouter** (expand the section) and paste your API key. Click **Save Key**.
+      </Step>
+
+      <Step title="Select OpenRouter provider">
+        Open **Settings → General** and set **Image Provider** to **OpenRouter**.
+      </Step>
+
+      <Step title="Choose an image model">
+        Open **Settings → Cloud → OpenRouter** and select your preferred image model from the **Image Model** dropdown.
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+## Model selection
+
+Cloud providers offer multiple image models. To change models:
+
+1. Open **Settings → Cloud**
+2. Select your provider section
+3. Click **Refresh Models** to load the latest available models
+4. Choose a model from the **Image Model** dropdown
+
+## API endpoints
+
+StoryFox uses different endpoints for each image provider:
+
+- **Hugging Face:** `POST https://router.huggingface.co/hf-inference/models/{model_id}`
+  - Request body: `{"inputs":"prompt","parameters":{"width":1024,"height":1024}}`
+  - Response: Raw image bytes
+- **OpenRouter:** `POST https://openrouter.ai/api/v1/images/generations`
+- **Together AI:** `POST https://api.together.xyz/v1/images/generations`
+
+<Warning>
+  Do not use Hugging Face's `/v1/images/generations` endpoint — it returns 404. Use the native inference route instead.
+</Warning>
+
+## Inference routing (Hugging Face)
+
+Hugging Face routes models through different inference providers (`hf-inference`, `fal-ai`, `replicate`, `together`, etc.). Not all models are available on all providers.
+
+StoryFox's `HFInferenceRouter` actor queries the Hugging Face API to find the best available provider for each model:
+
+```swift
+let url = await HFInferenceRouter.shared.inferenceURL(
+    for: modelID,
+    apiKey: apiKey
+)
+```
+
+The router caches provider mappings and prefers providers in this order:
+
+1. `hf-inference`
+2. `fal-ai`
+3. `replicate`
+4. `together`
+5. `wavespeed`
+6. `nscale`
+
+## Illustration styles
+
+When using Image Playground, StoryFox supports these styles:
+
+- **Sketch** — `IllustrationStyle.sketch.playgroundStyle`
+- **Illustration** — `IllustrationStyle.illustration.playgroundStyle`
+- **Watercolor** — `IllustrationStyle.watercolor.playgroundStyle`
+
+Cloud providers use the style information embedded in the image prompt.
+
+## Concurrent generation
+
+StoryFox generates multiple illustrations concurrently to speed up book creation. The concurrency limit is controlled by `GenerationConfig.maxConcurrentImages`.
+
+**Default:** 3 concurrent images
+
+## Provider comparison
+
+| Provider | Cost | Privacy | Setup | Speed | Quality |
+|----------|------|---------|-------|-------|----------|
+| Image Playground | Free | On-device | None | Fast | High |
+| Hugging Face | Free tier | Cloud | OAuth or API token | Medium | High |
+| Diffusers | Free | On-device | Model download | Slow | High |
+| OpenRouter | Pay-per-use | Cloud | API key + credits | Fast | Variable |

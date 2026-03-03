@@ -1,0 +1,422 @@
+---
+title: Export
+description: Export your completed storybooks to print-ready PDF or EPUB format with professional styling
+---
+
+StoryFox exports your completed storybooks to professional PDF and EPUB formats. Both formats include print-ready dimensions, custom typography, and the warm "Library at Dusk" color theme.
+
+## Export formats
+
+<Tabs>
+  <Tab title="PDF">
+    **Print-ready PDF** for professional printing or digital sharing
+    
+    - 300 DPI print resolution
+    - Embedded Georgia fonts
+    - Rounded image corners
+    - Title page, story pages, and end page
+    - Page numbers and decorative ornaments
+  </Tab>
+  
+  <Tab title="EPUB">
+    **EPUB 3.0 Fixed Layout** for digital reading on e-readers
+    
+    - Compatible with Apple Books, Kindle, and other readers
+    - Fixed-layout pages (not reflowable)
+    - Embedded images and fonts
+    - Navigation document
+    - Cover image with text overlay
+  </Tab>
+</Tabs>
+
+## PDF export architecture
+
+PDF rendering uses Core Graphics for precise layout control:
+
+```swift
+struct StoryPDFRenderer: PDFRendering {
+    func render(storybook: StoryBook, images: [Int: CGImage], format: BookFormat) -> Data {
+        let pageSize = format.dimensions
+        let pdfData = NSMutableData()
+        var mediaBox = CGRect(origin: .zero, size: pageSize)
+        
+        let consumer = CGDataConsumer(data: pdfData)
+        let context = CGContext(consumer: consumer, mediaBox: &mediaBox, nil)
+        
+        renderTitlePage(context: context, storybook: storybook, ...)
+        
+        for page in storybook.pages {
+            renderContentPage(context: context, page: page, ...)
+        }
+        
+        renderEndPage(context: context, storybook: storybook, ...)
+        
+        context.closePDF()
+        return pdfData as Data
+    }
+}
+```
+
+## Color theme
+
+All exports use the warm "Library at Dusk" color palette:
+
+<CardGroup cols={2}>
+  <Card title="Cream background" icon="palette">
+    `#F6EEDF` - Warm cream for all page backgrounds
+  </Card>
+  
+  <Card title="Dark text" icon="text">
+    `#1E1510` - Dark warm brown for primary text
+  </Card>
+  
+  <Card title="Muted text" icon="text-slash">
+    `#6B5A4C` - Medium brown for secondary text
+  </Card>
+  
+  <Card title="Accent coral" icon="gem">
+    `#B4543A` - Coral for dividers and ornaments
+  </Card>
+</CardGroup>
+
+```swift
+private let creamBg = CGColor(red: 0.965, green: 0.933, blue: 0.875, alpha: 1.0)
+private let darkText = CGColor(red: 0.118, green: 0.082, blue: 0.063, alpha: 1.0)
+private let mutedText = CGColor(red: 0.420, green: 0.353, blue: 0.298, alpha: 1.0)
+private let accentCoral = CGColor(red: 0.706, green: 0.329, blue: 0.227, alpha: 1.0)
+```
+
+## PDF page types
+
+### Title page
+
+<Steps>
+  <Step title="Cover illustration">
+    55% of page height, centered, with rounded corners
+  </Step>
+  
+  <Step title="Decorative divider">
+    Coral line with diamond ornament at 38% from bottom
+  </Step>
+  
+  <Step title="Story title">
+    Georgia Bold 30pt, centered, with line spacing
+  </Step>
+  
+  <Step title="Author line">
+    Georgia Italic 14pt, muted color, centered at bottom
+  </Step>
+</Steps>
+
+```swift
+private func renderTitlePage(
+    context: CGContext,
+    storybook: StoryBook,
+    coverImage: CGImage?,
+    pageSize: CGSize,
+    contentRect: CGRect
+) {
+    context.beginPDFPage(nil)
+    fillBackground(context: context, pageSize: pageSize)
+    
+    if let cover = coverImage {
+        let imageHeight = contentRect.height * 0.55
+        drawRoundedImage(cover, in: imageRect, context: context)
+    }
+    
+    drawDivider(context: context, y: dividerY, contentRect: contentRect)
+    
+    // Render title with Core Text
+    let titleFont = CTFontCreateWithName("Georgia-Bold" as CFString, 30, nil)
+    // ... Core Text rendering
+}
+```
+
+### Content pages
+
+<Steps>
+  <Step title="Page illustration">
+    55% of page height, aspect-fit with rounded corners
+  </Step>
+  
+  <Step title="Divider">
+    Coral decorative line separating image and text
+  </Step>
+  
+  <Step title="Story text">
+    Georgia 17pt, centered, 30% of page height
+  </Step>
+  
+  <Step title="Page number">
+    Georgia 10pt, muted color, centered at bottom
+  </Step>
+</Steps>
+
+### End page
+
+<Steps>
+  <Step title="Top ornament">
+    Decorative "— ◆ —" in coral color
+  </Step>
+  
+  <Step title="The End">
+    Georgia Bold 36pt, centered
+  </Step>
+  
+  <Step title="Bottom ornament">
+    Matching decorative element
+  </Step>
+  
+  <Step title="Story moral">
+    Georgia Italic 14pt, muted color, centered
+  </Step>
+  
+  <Step title="StoryFox stamp">
+    Watermark logo at 70% opacity (if available)
+  </Step>
+</Steps>
+
+## Typography
+
+All text uses the Georgia font family:
+
+| Element | Font | Size | Color |
+|---------|------|------|-------|
+| Title | Georgia Bold | 30pt | Dark brown |
+| Author | Georgia Italic | 14pt | Muted brown |
+| Story text | Georgia | 17pt | Dark brown |
+| Page number | Georgia | 10pt | Muted brown |
+| End title | Georgia Bold | 36pt | Dark brown |
+| Moral | Georgia Italic | 14pt | Muted brown |
+| Ornaments | Georgia | 14pt | Coral |
+
+```swift
+let titleFont = CTFontCreateWithName("Georgia-Bold" as CFString, 30, nil)
+let textFont = CTFontCreateWithName("Georgia" as CFString, 17, nil)
+let authorFont = CTFontCreateWithName("Georgia-Italic" as CFString, 14, nil)
+```
+
+## Layout measurements
+
+```swift
+private let margin: CGFloat = 54  // 0.75 inches at 72 DPI
+private let imageCornerRadius: CGFloat = 8
+
+let imageHeight = contentRect.height * 0.55  // 55% for image
+let textHeight = contentRect.height * 0.30   // 30% for text
+let dividerY = contentRect.minY + contentRect.height * 0.38
+```
+
+## Image fitting
+
+Images are aspect-fit to preserve their proportions:
+
+```swift
+private func fitImage(_ image: CGImage, in rect: CGRect) -> CGRect {
+    let imageAspect = CGFloat(image.width) / CGFloat(image.height)
+    let rectAspect = rect.width / rect.height
+    
+    if imageAspect > rectAspect {
+        // Image is wider - fit to width
+        let height = rect.width / imageAspect
+        let y = rect.midY - height / 2
+        return CGRect(x: rect.minX, y: y, width: rect.width, height: height)
+    } else {
+        // Image is taller - fit to height
+        let width = rect.height * imageAspect
+        let x = rect.midX - width / 2
+        return CGRect(x: x, y: rect.minY, width: width, height: rect.height)
+    }
+}
+```
+
+## EPUB export architecture
+
+EPUB export builds a ZIP archive with EPUB 3.0 structure:
+
+```swift
+struct StoryEPUBRenderer: EPUBRendering {
+    func render(storybook: StoryBook, images: [Int: CGImage], format: BookFormat) -> Data {
+        var zip = ZIPBuilder()
+        
+        // 1. mimetype - must be first, uncompressed
+        zip.addStored(path: "mimetype", data: Data("application/epub+zip".utf8))
+        
+        // 2. META-INF/container.xml
+        zip.addDeflated(path: "META-INF/container.xml", data: containerXML)
+        
+        // 3. CSS
+        zip.addDeflated(path: "OEBPS/styles.css", data: stylesheet)
+        
+        // 4. Images (JPEG at 0.85 quality)
+        for page in storybook.pages {
+            if let img = images[page.pageNumber], let jpeg = cgImageToJPEGData(img) {
+                zip.addStored(path: "OEBPS/images/page-\(page.pageNumber).jpg", data: jpeg)
+            }
+        }
+        
+        // 5. XHTML pages
+        // 6. Navigation document
+        // 7. OPF package document
+        
+        return zip.finalize()
+    }
+}
+```
+
+## EPUB structure
+
+```
+epub-file.epub (ZIP archive)
+├── mimetype
+├── META-INF/
+│   └── container.xml
+└── OEBPS/
+    ├── content.opf (package document)
+    ├── toc.xhtml (navigation)
+    ├── styles.css
+    ├── cover.xhtml
+    ├── page-1.xhtml
+    ├── page-2.xhtml
+    ├── ...
+    ├── end.xhtml
+    └── images/
+        ├── cover.jpg (with title overlay)
+        ├── page-1.jpg
+        ├── page-2.jpg
+        ├── ...
+        └── stamp.png
+```
+
+## EPUB fixed layout
+
+EPUB files use fixed-layout (pre-paginated) format:
+
+```swift
+private func stylesheet(vw: Int, vh: Int) -> String {
+    """
+    @viewport { width: \(vw)px; height: \(vh)px; }
+    html, body {
+        margin: 0; padding: 0;
+        width: \(vw)px; height: \(vh)px;
+        overflow: hidden;
+        background: #F6EEDF;
+        font-family: Georgia, 'Times New Roman', serif;
+    }
+    """
+}
+```
+
+## Cover image compositing
+
+EPUB covers include text overlay so the title appears in bookshelf views:
+
+```swift
+private func compositeCoverImage(
+    _ image: CGImage,
+    title: String,
+    author: String
+) -> CGImage {
+    // 1. Draw original illustration
+    ctx.draw(image, in: fullRect)
+    
+    // 2. Draw gradient scrim over bottom 40%
+    let gradient = CGGradient(
+        colorsSpace: colorSpace,
+        colors: [
+            CGColor(red: 0.08, green: 0.05, blue: 0.03, alpha: 0.85),
+            CGColor(red: 0.08, green: 0.05, blue: 0.03, alpha: 0.0)
+        ] as CFArray,
+        locations: [0.0, 1.0]
+    )
+    ctx.drawLinearGradient(gradient, ...)
+    
+    // 3. Draw title text in white
+    // 4. Draw author text in semi-transparent white
+    
+    return ctx.makeImage() ?? image
+}
+```
+
+<Note>
+  The text overlay ensures the book title is visible when browsing your library in e-reader apps like Apple Books.
+</Note>
+
+## EPUB metadata
+
+```xml
+<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="bookid">urn:uuid:{UUID}</dc:identifier>
+    <dc:title>{Story Title}</dc:title>
+    <dc:creator>{Author Line}</dc:creator>
+    <dc:language>en</dc:language>
+    <meta property="dcterms:modified">{ISO8601 timestamp}</meta>
+    <meta property="rendition:layout">pre-paginated</meta>
+    <meta property="rendition:spread">auto</meta>
+    <meta name="cover" content="img-cover"/>
+</metadata>
+```
+
+## Image compression
+
+Both formats use optimized image compression:
+
+<Tabs>
+  <Tab title="PDF">
+    Images are embedded as-is (already compressed by the image generator)
+  </Tab>
+  
+  <Tab title="EPUB">
+    Images are converted to JPEG at 85% quality:
+    
+    ```swift
+    private func cgImageToJPEGData(
+        _ image: CGImage,
+        quality: CGFloat = 0.85
+    ) -> Data? {
+        let mutableData = NSMutableData()
+        let destination = CGImageDestinationCreateWithData(
+            mutableData as CFMutableData,
+            "public.jpeg" as CFString,
+            1,
+            nil
+        )
+        let options: [CFString: Any] = [
+            kCGImageDestinationLossyCompressionQuality: quality
+        ]
+        CGImageDestinationAddImage(destination, image, options as CFDictionary)
+        CGImageDestinationFinalize(destination)
+        return mutableData as Data
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Export file sizes
+
+Typical file sizes for a 12-page book:
+
+| Format | Size range | Notes |
+|--------|-----------|-------|
+| PDF | 15-30 MB | Depends on illustration complexity |
+| EPUB | 12-25 MB | Slightly smaller due to JPEG compression |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Print your book" icon="print">
+    Send PDF to professional printers or print at home
+  </Card>
+  
+  <Card title="Read on devices" icon="tablet">
+    Import EPUB to Apple Books, Kindle, or other e-readers
+  </Card>
+  
+  <Card title="Share digitally" icon="share">
+    Email or share PDF/EPUB files with family and friends
+  </Card>
+  
+  <Card title="Archive your stories" icon="folder">
+    Keep copies of all your generated storybooks
+  </Card>
+</CardGroup>

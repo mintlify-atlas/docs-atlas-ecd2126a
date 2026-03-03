@@ -1,0 +1,449 @@
+---
+title: Release workflow
+description: Automate version bumps, builds, and GitHub releases
+---
+
+StoryFox uses `scripts/release.sh` to automate the full release pipeline: version bumps, DMG builds, appcast generation, release notes injection, GitHub release creation, and git commits.
+
+## Overview
+
+The release script handles 8 steps:
+
+1. Bump `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in `project.yml`
+2. Build, sign, notarize, and package DMG
+3. Generate `appcast.xml` with EdDSA signatures
+4. Check/create release notes HTML
+5. Inject release notes into `appcast.xml`
+6. Create GitHub release with DMG asset
+7. Commit version bump, appcast, and release notes
+8. Push to `origin/main`
+
+## Usage
+
+```bash
+./scripts/release.sh <version> [--notes "Release notes"]
+```
+
+### Examples
+
+<CodeGroup>
+
+```bash Basic release
+./scripts/release.sh 1.9.3
+```
+
+```bash Release with notes
+./scripts/release.sh 1.9.3 --notes "Fixed character consistency; Improved EPUB export"
+```
+
+</CodeGroup>
+
+<Note>
+Release notes are semicolon-separated and converted to HTML bullet points automatically.
+</Note>
+
+## Release steps in detail
+
+### Step 1: Bump version
+
+The script reads the current build number from `project.yml`, increments it, and updates both `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION`:
+
+```bash scripts/release.sh
+CURRENT_BUILD=$(grep -m1 'CURRENT_PROJECT_VERSION:' project.yml | sed 's/.*"\([0-9]*\)".*/\1/')
+NEW_BUILD=$((CURRENT_BUILD + 1))
+
+awk -v ver="$VERSION" '!done && /MARKETING_VERSION:/ { sub(/MARKETING_VERSION: "[^"]*"/, "MARKETING_VERSION: \"" ver "\""); done=1 } 1' project.yml > project.yml.tmp && mv project.yml.tmp project.yml
+awk -v build="$NEW_BUILD" '!done && /CURRENT_PROJECT_VERSION:/ { sub(/CURRENT_PROJECT_VERSION: "[0-9]*"/, "CURRENT_PROJECT_VERSION: \"" build "\""); done=1 } 1' project.yml > project.yml.tmp && mv project.yml.tmp project.yml
+```
+
+**Before:**
+```yaml project.yml
+MARKETING_VERSION: "1.9.2"
+CURRENT_PROJECT_VERSION: "33"
+```
+
+**After:**
+```yaml project.yml
+MARKETING_VERSION: "1.9.3"
+CURRENT_PROJECT_VERSION: "34"
+```
+
+### Step 2: Build DMG
+
+```bash
+make dmg
+```
+
+This runs the full signing and notarization pipeline (see [Signing and notarization](/development/signing-and-notarization)).
+
+Output: `dist/StoryFox.dmg` (signed, notarized, stapled)
+
+### Step 3: Generate appcast
+
+```bash scripts/release.sh
+SPARKLE_BIN_DIR=$(find ~/Library/Developer/Xcode/DerivedData -path "*/Sparkle/bin" -type d | head -1)
+
+"${SPARKLE_BIN_DIR}/generate_appcast" \
+  --download-url-prefix "https://github.com/jakerains/StoryFox/releases/download/v${VERSION}/" \
+  -o appcast.xml \
+  dist
+```
+
+This scans `dist/` for all DMGs and generates `appcast.xml` with:
+- Version and build number
+- File size
+- EdDSA signature
+- Download URL
+
+### Step 4: Release notes
+
+The script checks for `release-notes/{version}.html`:
+
+**If it exists:**
+```bash
+echo "Using existing release-notes/1.9.3.html"
+```
+
+**If `--notes` flag provided:**
+```bash
+NOTES_HTML="<h2>Version ${VERSION}</h2>\n<ul>"
+IFS=';' read -ra NOTE_ITEMS <<< "$NOTES"
+for item in "${NOTE_ITEMS[@]}"; do
+    trimmed=$(echo "$item" | xargs)
+    [[ -n "$trimmed" ]] && NOTES_HTML="${NOTES_HTML}\n  <li>${trimmed}</li>"
+done
+NOTES_HTML="${NOTES_HTML}\n</ul>"
+printf "%b\n" "$NOTES_HTML" > "release-notes/${VERSION}.html"
+```
+
+Example:
+```bash
+./scripts/release.sh 1.9.3 --notes "Fixed bug A; Improved feature B; Added feature C"
+```
+
+Generates:
+```html release-notes/1.9.3.html
+<h2>Version 1.9.3</h2>
+<ul>
+  <li>Fixed bug A</li>
+  <li>Improved feature B</li>
+  <li>Added feature C</li>
+</ul>
+```
+
+**If no notes:**
+```html release-notes/1.9.3.html
+<h2>Version 1.9.3</h2>
+<ul>
+  <li>Bug fixes and improvements</li>
+</ul>
+```
+
+### Step 5: Inject release notes
+
+```bash
+./scripts/inject-release-notes.sh
+```
+
+This injects the HTML from `release-notes/{version}.html` into the matching `<item>` in `appcast.xml`:
+
+```xml appcast.xml
+<item>
+    <title>Version 1.9.3</title>
+    <sparkle:shortVersionString>1.9.3</sparkle:shortVersionString>
+    <description><![CDATA[
+        <h2>Version 1.9.3</h2>
+        <ul>
+          <li>Fixed bug A</li>
+          <li>Improved feature B</li>
+          <li>Added feature C</li>
+        </ul>
+    ]]></description>
+    <enclosure url="..." sparkle:edSignature="..." />
+</item>
+```
+
+### Step 6: Create GitHub release
+
+```bash scripts/release.sh
+DEFAULT_NOTES="## StoryFox v${VERSION}
+
+Download the DMG, mount it, and drag StoryFox to Applications.
+Existing users will be prompted to update automatically."
+
+gh release create "v${VERSION}" dist/StoryFox.dmg \
+  --title "StoryFox v${VERSION}" \
+  --notes "${NOTES:-$DEFAULT_NOTES}"
+```
+
+This uses the GitHub CLI (`gh`) to:
+- Create a new release with tag `v{version}`
+- Upload `dist/StoryFox.dmg` as an asset
+- Set release title and description
+
+<Note>
+Install the GitHub CLI: `brew install gh`, then authenticate: `gh auth login`
+</Note>
+
+### Step 7: Commit changes
+
+```bash scripts/release.sh
+git add project.yml appcast.xml StoryFox.xcodeproj/project.pbxproj release-notes/
+git commit -m "Release v${VERSION}
+
+- Bump to ${VERSION} (build ${NEW_BUILD})
+- Update appcast with signed DMG entry and release notes"
+```
+
+### Step 8: Push to main
+
+```bash
+git push origin main
+```
+
+The landing page auto-deploys to Vercel on push to `main`.
+
+## Prerequisites
+
+### GitHub CLI
+
+Install and authenticate:
+
+```bash
+brew install gh
+gh auth login
+```
+
+### Signing credentials
+
+Ensure you've completed the [Signing and notarization](/development/signing-and-notarization) setup:
+
+- Developer ID certificate installed
+- Notarization credentials stored in Keychain
+- `Makefile` configured with your team ID
+
+### EdDSA key pair
+
+Generate once:
+
+```bash
+make sparkle-setup
+```
+
+Add the public key to `Resources/StoryFox-Info.plist` (see [Sparkle updates](/development/sparkle-updates)).
+
+## Manual release checklist
+
+If you prefer not to use `scripts/release.sh`, follow these steps manually:
+
+<Steps>
+  <Step title="Bump version in project.yml">
+    Edit `MARKETING_VERSION` and increment `CURRENT_PROJECT_VERSION`
+  </Step>
+
+  <Step title="Update changelog">
+    Edit `landing/lib/changelog.ts` with the new version entry:
+    ```ts landing/lib/changelog.ts
+    export const changelogEntries = [
+      {
+        version: "1.9.3",
+        date: "2026-03-03",
+        changes: [
+          "Fixed character consistency in multi-page stories",
+          "Improved EPUB export metadata",
+        ],
+      },
+      // ...
+    ];
+    ```
+  </Step>
+
+  <Step title="Update landing page version">
+    Edit `landing/app/page.tsx` structured data:
+    ```tsx landing/app/page.tsx
+    const structuredData = {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      softwareVersion: "1.9.3",
+      // ...
+    };
+    ```
+  </Step>
+
+  <Step title="Create release notes HTML">
+    Create `release-notes/1.9.3.html`:
+    ```html
+    <h2>Version 1.9.3</h2>
+    <ul>
+      <li>Fixed character consistency</li>
+      <li>Improved EPUB export</li>
+    </ul>
+    ```
+  </Step>
+
+  <Step title="Build DMG">
+    ```bash
+    make dmg
+    ```
+  </Step>
+
+  <Step title="Generate appcast">
+    ```bash
+    make appcast
+    ```
+  </Step>
+
+  <Step title="Inject release notes">
+    ```bash
+    ./scripts/inject-release-notes.sh
+    ```
+  </Step>
+
+  <Step title="Create GitHub release">
+    ```bash
+    gh release create "v1.9.3" dist/StoryFox.dmg \
+      --title "StoryFox v1.9.3" \
+      --notes "Download the DMG and drag to Applications."
+    ```
+  </Step>
+
+  <Step title="Commit and push">
+    ```bash
+    git add project.yml appcast.xml StoryFox.xcodeproj/project.pbxproj release-notes/
+    git commit -m "Release v1.9.3"
+    git push origin main
+    ```
+  </Step>
+</Steps>
+
+## Post-release verification
+
+After the release completes, verify:
+
+### 1. Check GitHub release
+
+Visit `https://github.com/jakerains/StoryFox/releases/tag/v{version}` and confirm:
+
+- DMG asset is attached
+- Release notes are visible
+- Download link works
+
+### 2. Check appcast feed
+
+```bash
+curl https://raw.githubusercontent.com/jakerains/StoryFox/main/appcast.xml
+```
+
+Verify:
+- New version is listed
+- EdDSA signature is present (`sparkle:edSignature="..."`)
+- Release notes are injected in `<description><![CDATA[...]]>`
+- Download URL points to the correct GitHub release asset
+
+### 3. Mount DMG and check version
+
+```bash
+open dist/StoryFox.dmg
+plutil -p /Volumes/StoryFox/StoryFox.app/Contents/Info.plist | grep CFBundleShortVersionString
+plutil -p /Volumes/StoryFox/StoryFox.app/Contents/Info.plist | grep CFBundleVersion
+```
+
+Expected:
+```
+"CFBundleShortVersionString" => "1.9.3"
+"CFBundleVersion" => "34"
+```
+
+### 4. Test auto-update
+
+Run an older version of StoryFox and choose **StoryFox > Check for Updates**. Verify:
+
+- Update dialog appears with release notes
+- Download and install succeed
+- App relaunches with new version
+
+## Troubleshooting
+
+### Error: "Working tree has uncommitted changes"
+
+**Solution:** Commit or stash changes before running `release.sh`:
+```bash
+git status
+git add .
+git commit -m "Prepare for release"
+```
+
+### Error: "Version bump failed"
+
+**Cause:** `awk` failed to replace the version in `project.yml`.
+
+**Solution:** Manually edit `project.yml` and re-run:
+```bash
+./scripts/release.sh 1.9.3 --skip-version-bump  # (not supported — edit script)
+```
+
+### Error: "gh: command not found"
+
+**Solution:** Install GitHub CLI:
+```bash
+brew install gh
+gh auth login
+```
+
+### Error: "Appcast signature missing"
+
+**Cause:** `generate_appcast` didn't sign the DMG.
+
+**Solution:** Manually sign and update the appcast:
+```bash
+SPARKLE_BIN_DIR=$(find ~/Library/Developer/Xcode/DerivedData -path "*/Sparkle/bin" -type d | head -1)
+SIGNATURE=$("${SPARKLE_BIN_DIR}/sign_update" dist/StoryFox.dmg | grep -o 'sparkle:edSignature="[^"]*"')
+echo "Signature: $SIGNATURE"
+
+# Manually add to appcast.xml enclosure tag
+```
+
+## Best practices
+
+### Always test builds locally first
+
+Before running `release.sh`, test the DMG:
+
+```bash
+make dmg
+open dist/StoryFox.dmg
+# Drag to Applications and test all features
+```
+
+### Keep release notes clear and user-focused
+
+Good:
+```html
+<li>Fixed story text disappearing when exporting to PDF</li>
+<li>Added landscape book format for panoramic illustrations</li>
+```
+
+Bad:
+```html
+<li>Refactored CreationViewModel</li>
+<li>Updated dependencies</li>
+```
+
+### Version numbering
+
+Follow semantic versioning:
+
+- **Major** (2.0.0): Breaking changes, major redesigns
+- **Minor** (1.9.0): New features, non-breaking changes
+- **Patch** (1.9.3): Bug fixes, small improvements
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Sparkle updates" href="/development/sparkle-updates" icon="arrow-up">
+    Configure auto-update system
+  </Card>
+  <Card title="Signing and notarization" href="/development/signing-and-notarization" icon="certificate">
+    Build signed and notarized DMGs
+  </Card>
+</CardGroup>

@@ -1,0 +1,323 @@
+---
+title: Illustrations
+description: Generate consistent, high-quality illustrations for every page using multi-provider image generation with progressive fallback
+---
+
+StoryFox generates beautiful illustrations for every page of your storybook. The illustration system supports multiple AI providers, handles content safety challenges, and includes sophisticated retry logic to ensure every page gets an image.
+
+## Generation architecture
+
+Illustrations are generated concurrently with controlled parallelism:
+
+<Steps>
+  <Step title="Cover image first">
+    The cover is generated first and can optionally be used as a character reference for remaining pages
+  </Step>
+  
+  <Step title="Parallel page generation">
+    Story pages generate concurrently with a configurable limit (default: 3 concurrent images)
+  </Step>
+  
+  <Step title="Recovery passes">
+    Failed pages are retried up to 3 times with progressively safer prompt variants
+  </Step>
+  
+  <Step title="Final cover rescue">
+    If the cover failed, a dedicated rescue attempt uses the safest prompts
+  </Step>
+</Steps>
+
+```swift
+let semaphore = AsyncSemaphore(limit: GenerationConfig.maxConcurrentImages)
+
+try await withThrowingTaskGroup(of: (Int, String, CGImage?).self) { group in
+    for page in pages {
+        group.addTask {
+            await semaphore.wait()
+            defer { Task { await semaphore.signal() } }
+            
+            let image = try await self.generateSingleImage(
+                prompt: enrichedPrompt,
+                style: style,
+                format: format
+            )
+            return (page.pageNumber, enrichedPrompt, image)
+        }
+    }
+}
+```
+
+## Supported providers
+
+StoryFox routes image generation through multiple providers based on your settings:
+
+<Tabs>
+  <Tab title="ImagePlayground (default)">
+    **Apple ImagePlayground** (on-device)
+    
+    - Available on Apple Silicon Macs with Apple Intelligence
+    - Generates images locally without cloud API calls
+    - Three built-in styles: Illustration, Animation, Sketch
+    - Strict content safety filters
+    
+    ```swift
+    var playgroundStyle: ImagePlaygroundStyle {
+        switch self {
+        case .illustration: .illustration
+        case .animation:    .animation
+        case .sketch:       .sketch
+        }
+    }
+    ```
+  </Tab>
+  
+  <Tab title="OpenAI (premium)">
+    **OpenAI DALL-E 3**
+    
+    - Cloud-based image generation
+    - Available for premium subscribers
+    - Handles longer, more complex prompts
+    - Better at photorealistic and detailed scenes
+  </Tab>
+  
+  <Tab title="Replicate">
+    **Replicate (FLUX models)**
+    
+    - Cloud-based with multiple FLUX model variants
+    - Supports custom models and fine-tuning
+    - API key required
+  </Tab>
+  
+  <Tab title="Hugging Face">
+    **Hugging Face Inference**
+    
+    - Open source model hosting
+    - Uses native HF inference endpoint
+    - Supports custom model selection
+    
+    ```swift
+    POST https://router.huggingface.co/hf-inference/models/{model_id}
+    Body: {"inputs":"...","parameters":{"width":1024,"height":1024}}
+    ```
+  </Tab>
+</Tabs>
+
+## Illustration styles
+
+Choose from three illustration styles:
+
+<CardGroup cols={3}>
+  <Card title="Illustration" icon="paintbrush">
+    Classic children's book illustration style with soft edges and warm colors
+  </Card>
+  
+  <Card title="Animation" icon="film">
+    Pixar-inspired 3D cartoon style with vibrant characters
+  </Card>
+  
+  <Card title="Sketch" icon="pencil">
+    Hand-drawn pencil sketch style with artistic linework
+  </Card>
+</CardGroup>
+
+## Progressive prompt fallback
+
+When image generation fails (usually due to content safety filters), StoryFox automatically tries progressively safer prompt variants:
+
+### Variant chain for ImagePlayground
+
+1. **Sanitized** - Full sanitized scene (~180 characters)
+2. **LLM rewritten** - Foundation Model rewrites the prompt for safety
+3. **Shortened** - First 18 keywords only
+4. **High reliability** - First 12 keywords
+5. **Fallback** - First 8 keywords + scene framing
+6. **Ultra safe** - First 4 keywords + "sunny day"
+
+```swift
+private let variantLabels = [
+    "sanitized",
+    "llmRewritten",
+    "shortened",
+    "highReliability",
+    "fallback",
+    "ultraSafe"
+]
+```
+
+### Cloud provider fast path
+
+Cloud providers (OpenAI, Replicate, Hugging Face) skip the variant chain and use the full prompt directly:
+
+```swift
+if currentSettings.imageProvider.isCloud {
+    let sanitizedPrompt = ContentSafetyPolicy.safeIllustrationPrompt(
+        prompt,
+        maxLength: 1000
+    )
+    let outcome = try await router.generateImage(
+        prompt: sanitizedPrompt,
+        style: style,
+        format: format
+    )
+    return outcome.image
+}
+```
+
+## Multi-concept generation
+
+For ImagePlayground, StoryFox uses a multi-concept approach with progressive shedding:
+
+<Info>
+  Instead of sending one long text string, the system decomposes prompts into ranked concepts and sends them as separate `.text()` items. If generation fails, it drops the least important concept and retries.
+</Info>
+
+```swift
+let decomposition = await PromptAnalysisEngine.decomposeIntoConcepts(prompt: prompt)
+var conceptCount = decomposition.concepts.count
+
+while conceptCount > 0 {
+    let activeConcepts = Array(decomposition.concepts.prefix(conceptCount))
+    
+    do {
+        let outcome = try await router.generateImage(
+            prompt: prompt,
+            style: style,
+            format: format,
+            rankedConcepts: activeConcepts
+        )
+        return outcome.image
+    } catch {
+        // Shed least important concept and retry
+        conceptCount -= 1
+    }
+}
+```
+
+## Character reference images
+
+StoryFox supports character reference images for visual consistency:
+
+<Tabs>
+  <Tab title="Premium path">
+    Premium subscribers can provide a character sheet image that's included with every page generation:
+    
+    ```swift
+    if let sheet = characterSheetImage {
+        let sheetData = Self.cgImageToJPEGData(sheet)
+        if let data = sheetData {
+            let sheetRef = CharacterPhotoReference(
+                name: "character_sheet",
+                photo: sheet,
+                photoData: data,
+                role: "character_sheet"
+            )
+            router.characterPhotos = [sheetRef]
+        }
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Standard path">
+    The cover image can be used as a reference for page 1:
+    
+    ```swift
+    var useReferenceImage: Bool = false  // Configurable
+    
+    let refImage = (!hasCharacterSheet && useReferenceImage && page.pageNumber == 1) 
+        ? characterReferenceImage 
+        : nil
+    ```
+  </Tab>
+</Tabs>
+
+## Character prefix preservation
+
+Character descriptions are preserved across all prompt variants:
+
+```swift
+private func splitCharacterPrefix(from prompt: String) -> (prefix: String, scene: String) {
+    // New format: "Featuring Luna, a small orange fox with a green scarf. <scene>"
+    if prompt.hasPrefix("Featuring ") {
+        if let dotRange = prompt.range(of: ". ") {
+            let prefix = String(prompt[..<dotRange.upperBound])
+            let scene = String(prompt[dotRange.upperBound...])
+            return (prefix, scene)
+        }
+    }
+    return ("", prompt)
+}
+```
+
+The prefix is kept intact while only the scene description is truncated in fallback variants. This ensures character consistency is never lost during retries.
+
+## Retry logic
+
+The system includes smart retry logic that distinguishes transient failures from content safety blocks:
+
+```swift
+private func shouldRetrySameVariant(after error: Error) -> Bool {
+    guard let imageError = error as? ImageCreator.Error else {
+        return true  // Unknown failures - retry once
+    }
+    
+    switch imageError {
+    case .unavailable:
+        return true  // Transient system resource issue
+    case .creationFailed:
+        return false  // Content filtering - escalate to next variant
+    default:
+        return false
+    }
+}
+```
+
+## Recovery passes
+
+If pages fail during the parallel generation phase, recovery passes retry them sequentially:
+
+```swift
+for pass in 1...GenerationConfig.imageRecoveryPasses {
+    let startVariant = min(pass, 5)  // Skip variants that already failed
+    
+    for job in pending {
+        let image = try await generateSingleImage(
+            prompt: job.prompt,
+            style: style,
+            format: format,
+            startingVariantIndex: startVariant
+        )
+        generatedImages[job.index] = image
+    }
+}
+```
+
+## Diagnostics and logging
+
+Every image generation attempt is logged for diagnostics:
+
+```swift
+await GenerationDiagnosticsLogger.shared.logImageSuccess(
+    provider: outcome.providerUsed,
+    prompt: prompt,
+    variantLabel: label,
+    variantIndex: variantIndex,
+    attemptIndex: attempt,
+    durationSeconds: secs,
+    usedMultiConcept: true
+)
+```
+
+You can view which variants succeeded most often:
+
+```swift
+variantSuccessCounts["cloudDirect", default: 0] += 1
+variantSuccessCounts["multiConcept_3", default: 0] += 1
+```
+
+## Next steps
+
+After illustrations are generated:
+
+- Character consistency is validated across all images
+- The complete book is ready for [export](/features/export) to PDF or EPUB
+- You can regenerate individual pages or the entire book

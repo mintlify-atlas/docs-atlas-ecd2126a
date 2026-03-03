@@ -1,0 +1,209 @@
+---
+title: Text providers
+description: Configure AI models for story text generation
+---
+
+StoryFox supports multiple text generation providers, from on-device models to cloud-based APIs. Choose the provider that best fits your privacy needs, performance requirements, and budget.
+
+## Available providers
+
+<Tabs>
+  <Tab title="Apple Foundation Models">
+    ### On-device AI with Apple Intelligence
+
+    Apple Foundation Models run entirely on your Mac using Apple Intelligence. No internet connection, API keys, or cloud services required.
+
+    **Requirements:**
+    - Apple Silicon (M1 or newer)
+    - macOS 26 or later
+    - Apple Intelligence enabled
+
+    **Benefits:**
+    - Complete privacy — all processing happens on-device
+    - No API costs
+    - Fast generation with low latency
+    - Works offline
+
+    **Setup:**
+    
+    No configuration needed. Apple Foundation Models are available by default on supported systems.
+
+    <Note>
+      Apple Foundation Models are selected as the default text provider. You can change this in **Settings → General → Text Provider**.
+    </Note>
+  </Tab>
+
+  <Tab title="MLX Swift">
+    ### Local open-source models
+
+    Run open-weight language models locally using MLX Swift. Models download automatically from Hugging Face on first use.
+
+    **Requirements:**
+    - Apple Silicon (M1 or newer)
+    - At least 8GB RAM (16GB recommended)
+    - Internet connection for initial model download
+
+    **Curated models:**
+
+    | Model | Size | Details |
+    |-------|------|----------|
+    | `lmstudio-community/LFM2.5-1.2B-Instruct-MLX-4bit` | 1.2B | Small, fast model for story drafting |
+    | `mlx-community/Qwen3-1.7B-4bit` | 1.7B | Balanced quality and memory footprint |
+    | `mlx-community/Qwen3-4B-4bit` | 4B | Higher quality at higher memory cost |
+
+    **Setup:**
+
+    <Steps>
+      <Step title="Select MLX Swift provider">
+        Open **Settings → General** and set **Text Provider** to **MLX Swift**.
+      </Step>
+
+      <Step title="Choose a model">
+        Open **Settings → On-Device** and select a curated model from the dropdown, or enter a custom Hugging Face model ID in the format `owner/model-name`.
+      </Step>
+
+      <Step title="Test the model">
+        Click **Test Model Load** to download and initialize the model. Progress shows download percentage and load status.
+      </Step>
+    </Steps>
+
+    <Note>
+      MLX models are currently hidden in the UI as they don't work well for story generation yet. Re-enable by uncommenting the MLX section in `OnDeviceSettingsTab.swift:18`.
+    </Note>
+  </Tab>
+
+  <Tab title="Hugging Face">
+    ### Free cloud AI with no credit card
+
+    Hugging Face provides free cloud-based text generation through their Inference API. Sign in with OAuth or use an API token.
+
+    **Benefits:**
+    - Free tier available
+    - No credit card required
+    - Access to state-of-the-art models
+    - OAuth sign-in support
+
+    **Default model:**
+    - `openai/gpt-oss-120b` — High-quality open-source text model
+
+    **Setup:**
+
+    <Tabs>
+      <Tab title="OAuth (Recommended)">
+        <Steps>
+          <Step title="Create a Hugging Face account">
+            Visit [huggingface.co/join](https://huggingface.co/join) and create a free account.
+          </Step>
+
+          <Step title="Sign in to StoryFox">
+            Open **Settings → Cloud** and click the **Sign in with Hugging Face** button.
+          </Step>
+
+          <Step title="Authorize StoryFox">
+            A browser window opens. Click **Authorize** to grant StoryFox access to the Hugging Face Inference API.
+          </Step>
+
+          <Step title="Select Hugging Face provider">
+            Open **Settings → General** and set **Text Provider** to **Hugging Face**.
+          </Step>
+        </Steps>
+      </Tab>
+
+      <Tab title="API Token">
+        <Steps>
+          <Step title="Generate an API token">
+            Visit [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) and create a new token with **Inference** scope.
+          </Step>
+
+          <Step title="Save the token">
+            Open **Settings → Cloud → Hugging Face** and expand **Use an API token instead**. Paste your token and click **Save Key**.
+          </Step>
+
+          <Step title="Select Hugging Face provider">
+            Open **Settings → General** and set **Text Provider** to **Hugging Face**.
+          </Step>
+        </Steps>
+      </Tab>
+    </Tabs>
+
+    <Note>
+      OAuth tokens are stored securely in the macOS Keychain. API tokens are stored under the service identifier `com.jakerains.StoryFox.cloud.huggingFace`.
+    </Note>
+  </Tab>
+
+  <Tab title="OpenRouter (Advanced)">
+    ### Access hundreds of cloud models
+
+    OpenRouter provides access to models from OpenAI, Anthropic, Google, Meta, and more through a single API.
+
+    **Default model:**
+    - `google/gemini-3-flash-preview` — Fast, cost-effective text generation
+
+    **Setup:**
+
+    <Steps>
+      <Step title="Get an API key">
+        Visit [openrouter.ai/keys](https://openrouter.ai/keys) and create an API key.
+      </Step>
+
+      <Step title="Add credits">
+        OpenRouter requires prepaid credits. Add funds at [openrouter.ai/credits](https://openrouter.ai/credits).
+      </Step>
+
+      <Step title="Save the key">
+        Open **Settings → Cloud → OpenRouter** (expand the section) and paste your API key. Click **Save Key**.
+      </Step>
+
+      <Step title="Select OpenRouter provider">
+        Open **Settings → General** and set **Text Provider** to **OpenRouter**.
+      </Step>
+    </Steps>
+
+    <Warning>
+      OpenRouter is collapsed by default in Settings under **Advanced**. Expand the section to configure your API key and model selection.
+    </Warning>
+  </Tab>
+</Tabs>
+
+## Model selection
+
+Each cloud provider offers multiple text models. To change models:
+
+1. Open **Settings → Cloud**
+2. Select your provider section
+3. Click **Refresh Models** to load the latest available models
+4. Choose a model from the **Text Model** dropdown
+
+Recommended models are marked with bold text and appear in a separate section.
+
+## Fallback behavior
+
+If a cloud or MLX provider fails, StoryFox can automatically fall back to Apple Foundation Models.
+
+**Enable text fallback:**
+
+1. Open **Settings → General**
+2. Enable **Text Fallback**
+
+When enabled, if your selected text provider encounters an error, StoryFox retries the request using Apple Foundation Models.
+
+<Note>
+  Fallback only works if Apple Foundation Models are available on your system (Apple Silicon + macOS 26).
+</Note>
+
+## API endpoints
+
+StoryFox uses OpenAI-compatible chat completion endpoints for cloud text generation:
+
+- **Hugging Face:** `https://router.huggingface.co/v1/chat/completions`
+- **OpenRouter:** `https://openrouter.ai/api/v1/chat/completions`
+- **Together AI:** `https://api.together.xyz/v1/chat/completions` (hidden in UI)
+
+## Provider comparison
+
+| Provider | Cost | Privacy | Setup | Quality |
+|----------|------|---------|-------|----------|
+| Apple Foundation | Free | On-device | None | High |
+| MLX Swift | Free | On-device | Model download | Medium |
+| Hugging Face | Free tier | Cloud | OAuth or API token | High |
+| OpenRouter | Pay-per-use | Cloud | API key + credits | Variable |

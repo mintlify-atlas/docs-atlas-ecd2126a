@@ -1,0 +1,267 @@
+---
+title: Project structure
+description: Understand the file organization and module layout
+---
+
+StoryFox is organized into shared cross-platform code, platform-specific UI, build scripts, and a Next.js landing site.
+
+## Top-level layout
+
+```
+StoryFox/
+├── StoryFoxApp.swift              # App entry point and navigation
+├── Shared/                        # Cross-platform business logic
+├── macOS/                         # macOS-specific UI and features
+├── iOS/                           # iOS-specific UI (on hold)
+├── Resources/                     # Assets, entitlements, Info.plist
+├── scripts/                       # Build, release, and automation scripts
+├── landing/                       # Next.js 15 landing page
+├── release-notes/                 # HTML snippets for Sparkle appcast
+├── project.yml                    # XcodeGen project spec (source of truth)
+├── StoryFox.xcodeproj/            # Generated Xcode project (do not edit)
+├── Makefile                       # Build automation targets
+└── appcast.xml                    # Sparkle update feed
+```
+
+## Shared/
+
+The `Shared/` directory contains all cross-platform code:
+
+```
+Shared/
+├── Models/
+│   ├── StoryBook.swift            # @Generable domain models
+│   ├── StoredStorybook.swift      # SwiftData persistence
+│   ├── BookFormat.swift           # Page format enums
+│   ├── IllustrationStyle.swift    # Art style enums
+│   └── CharacterPhotoReference.swift  # Premium character photos
+├── Generation/
+│   ├── StoryGenerator.swift       # On-device Foundation Models text gen
+│   ├── RemoteStoryGenerator.swift # Cloud text generation (HF, OpenRouter, etc.)
+│   ├── MLXStoryGenerator.swift    # On-device MLX text gen
+│   ├── IllustrationGenerator.swift    # Image generation orchestrator
+│   ├── ImageGenerationRouter.swift    # Routes to IP/Diffusers/HF
+│   ├── ImagePlaygroundImageGenerator.swift
+│   ├── CloudImageGenerator.swift  # HF Inference API images
+│   ├── StoryPDFRenderer.swift     # PDF export at 300 DPI
+│   ├── StoryEPUBRenderer.swift    # EPUB 3.0 fixed-layout export
+│   ├── ImagePromptEnricher.swift  # Character consistency injection
+│   ├── CharacterDescriptionValidator.swift
+│   ├── PromptAnalysisEngine.swift # Semantic prompt analysis with FM
+│   └── StoryPromptTemplates.swift # System prompts for each provider
+├── ViewModels/
+│   ├── CreationViewModel.swift    # Story creation orchestration
+│   ├── BookReaderViewModel.swift  # Reader state and export
+│   └── StoryQAViewModel.swift     # Guided mode Q&A flow
+├── Views/Components/
+│   ├── Color+Theme.swift          # Design system color tokens
+│   ├── StoryJuicerGlassTokens.swift   # Glass-morphism tokens
+│   ├── View+StoryJuicerGlass.swift    # Glass card modifiers
+│   ├── SqueezeButton.swift        # Primary generation button
+│   ├── FormatPreviewCard.swift    # Book format picker
+│   ├── StylePickerItem.swift      # Illustration style picker
+│   ├── PageTurnEffect.swift       # Animated page curl
+│   └── ReportIssueSheet.swift     # Issue reporting UI
+└── Utilities/
+    ├── ModelSelectionStore.swift  # Provider & model selection persistence
+    ├── CloudCredentialStore.swift # Keychain storage for API tokens
+    ├── HFTokenStore.swift         # Hugging Face OAuth tokens
+    ├── PremiumStore.swift         # Premium tier state
+    ├── GenerationDiagnosticsLogger.swift  # Verbose logging for debugging
+    ├── IssueReportService.swift   # Upload zips to Vercel API
+    └── ContentSafetyPolicy.swift  # Input sanitization
+```
+
+## macOS/
+
+macOS-specific UI and platform features:
+
+```
+macOS/
+├── Views/
+│   ├── MacCreationView.swift      # Story creation screen
+│   ├── MacGenerationProgressView.swift    # Generation progress grid
+│   ├── MacBookReaderView.swift    # Page-by-page reader
+│   ├── MacSettingsView.swift      # Settings window
+│   ├── MacExportView.swift        # PDF/EPUB save panel
+│   └── MacTestHarnessView.swift   # Character consistency test harness
+├── SoftwareUpdateManager.swift    # Sparkle 2 auto-update wrapper
+└── PDFRenderer+macOS.swift        # Core Graphics PDF rendering
+```
+
+## Resources/
+
+Assets, configuration, and app metadata:
+
+```
+Resources/
+├── Assets.xcassets/
+│   ├── AppIcon.appiconset/        # App icon
+│   └── StoryFoxHero.imageset/     # About panel hero image
+├── StoryFox.entitlements          # Sandbox entitlements (macOS)
+├── StoryFox-iOS.entitlements      # iOS entitlements
+├── StoryFox-Info.plist            # Sparkle public key
+└── Diffusers/                     # (Deprecated: on-device diffusion models)
+```
+
+<Warning>
+`xcodegen generate` can overwrite `StoryFox.entitlements` to an empty `<dict/>`. The `make dmg` target restores required entitlements. Always verify entitlements after regenerating the project.
+</Warning>
+
+## scripts/
+
+Build and release automation:
+
+| Script | Purpose |
+|--------|----------|
+| **generate.sh** | Regenerate Xcode project from `project.yml` |
+| **build.sh** | Build Debug or Release configuration |
+| **run.sh** | Build and launch app |
+| **doctor.sh** | Verify toolchain and SDK readiness |
+| **release.sh** | Full automated release pipeline |
+| **inject-release-notes.sh** | Inject HTML into appcast.xml |
+
+## landing/
+
+Next.js 15 landing page and API:
+
+```
+landing/
+├── app/
+│   ├── page.tsx                   # Homepage
+│   ├── changelog/page.tsx         # Changelog page
+│   └── api/
+│       ├── feedback/route.ts      # User feedback endpoint
+│       └── reports/route.ts       # Issue report upload (Vercel Blob)
+├── components/                    # React components
+├── lib/
+│   └── changelog.ts               # Changelog entries
+└── public/                        # Static assets
+```
+
+Deployment: Auto-deploys to Vercel on push to `main`.
+
+## release-notes/
+
+HTML snippets for Sparkle "What's New" UI:
+
+```
+release-notes/
+├── 1.7.1.html
+├── 1.7.2.html
+└── 1.9.2.html
+```
+
+Each file contains a simple HTML fragment:
+
+```html 1.9.2.html
+<h2>Version 1.9.2</h2>
+<ul>
+  <li>Fixed character consistency in multi-page stories</li>
+  <li>Improved EPUB export metadata</li>
+</ul>
+```
+
+These are injected into `appcast.xml` by `scripts/inject-release-notes.sh`.
+
+## project.yml
+
+The **source of truth** for Xcode project configuration. Never edit `StoryFox.xcodeproj/project.pbxproj` directly.
+
+### Key fields
+
+```yaml project.yml
+name: StoryFox
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "26.0"
+
+packages:
+  MLXSwift:
+    url: https://github.com/ml-explore/mlx-swift
+    exactVersion: 0.30.6
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: "2.8.1"
+
+targets:
+  StoryFox:
+    type: application
+    platform: macOS
+    sources:
+      - path: StoryFoxApp.swift
+      - path: Shared
+      - path: macOS
+      - path: Resources/Assets.xcassets
+    settings:
+      base:
+        MARKETING_VERSION: "1.9.2"
+        CURRENT_PROJECT_VERSION: "33"
+        PRODUCT_BUNDLE_IDENTIFIER: com.jakerains.StoryFox
+    dependencies:
+      - package: MLXSwift
+      - package: Sparkle
+```
+
+### After editing project.yml
+
+Always regenerate the Xcode project:
+
+```bash
+make generate
+```
+
+## Makefile targets
+
+The `Makefile` provides convenient build commands:
+
+| Target | Description |
+|--------|-------------|
+| `make help` | List all available targets |
+| `make doctor` | Check toolchain and SDK readiness |
+| `make build` | Build Debug for macOS |
+| `make run` | Build and launch Debug app |
+| `make build-release` | Build Release for macOS |
+| `make run-release` | Build and launch Release app |
+| `make dmg` | Full distribution pipeline: sign, notarize, staple, package DMG |
+| `make clean` | Clean Xcode build artifacts |
+| `make appcast` | Regenerate `appcast.xml` from DMGs in `dist/` |
+| `make sparkle-setup` | One-time EdDSA key pair generation for Sparkle signing |
+| `make purge-image-cache` | Remove cached Diffusers model data |
+
+## File naming conventions
+
+- **One primary type per file**, filename matches type name
+  - `CreationViewModel.swift` defines `class CreationViewModel`
+  - `BookFormat.swift` defines `enum BookFormat`
+- **UpperCamelCase** for types and protocols
+- **lowerCamelCase** for methods, properties, and variables
+- **Platform suffixes** for platform-specific files:
+  - `PDFRenderer+macOS.swift` — macOS-specific extension
+  - `MacCreationView.swift` — macOS view
+  - `IOSCreationView.swift` — iOS view (on hold)
+
+## Code organization rules
+
+1. **Keep `Shared/` compatible with both macOS and iOS** — use `#if os(macOS)` sparingly
+2. **Platform-specific code lives in `macOS/` or `iOS/`** — never in `Shared/`
+3. **One primary type per file** — exception: small helper structs/enums can live in the same file
+4. **Use mark comments** for logical sections:
+   ```swift
+   // MARK: - Generation
+   // MARK: - Actions
+   // MARK: - Private Helpers
+   ```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Architecture" href="/development/architecture" icon="diagram-project">
+    Learn about Swift 6 patterns and design system
+  </Card>
+  <Card title="Build from source" href="/development/building-from-source" icon="hammer">
+    Clone and build the project
+  </Card>
+</CardGroup>

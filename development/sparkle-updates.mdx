@@ -1,0 +1,350 @@
+---
+title: Sparkle updates
+description: Configure Sparkle 2 auto-update system for macOS
+---
+
+StoryFox uses [Sparkle 2](https://sparkle-project.org/) to deliver automatic updates. New versions are signed with EdDSA, notarized by Apple, and delivered as DMGs via GitHub Releases.
+
+## How Sparkle works
+
+1. **On launch**, `SoftwareUpdateManager` checks for updates via the appcast feed
+2. **Appcast XML** lists available versions with download URLs and EdDSA signatures
+3. **If newer version available**, Sparkle downloads the DMG, verifies the signature, and prompts the user
+4. **User clicks Install**, Sparkle mounts the DMG, replaces the app, and relaunches
+
+## Integration
+
+### SoftwareUpdateManager
+
+StoryFox wraps Sparkle's `SPUUpdater` in a Swift `@Observable` class:
+
+```swift macOS/SoftwareUpdateManager.swift
+import Sparkle
+
+@Observable
+@MainActor
+final class SoftwareUpdateManager {
+    private(set) var canCheckForUpdates = false
+
+    var automaticallyChecksForUpdates: Bool {
+        get { updaterController.updater.automaticallyChecksForUpdates }
+        set { updaterController.updater.automaticallyChecksForUpdates = newValue }
+    }
+
+    private let updaterController: SPUStandardUpdaterController
+    private let updaterDelegate = UpdaterDelegate()
+
+    init() {
+        updaterController = SPUStandardUpdaterController(
+            startingUpdater: true,
+            updaterDelegate: updaterDelegate,
+            userDriverDelegate: nil
+        )
+
+        // Check immediately on launch after 3-second delay
+        Task { @MainActor [weak updaterController] in
+            try? await Task.sleep(for: .seconds(3))
+            updaterController?.updater.checkForUpdatesInBackground()
+        }
+    }
+
+    func checkForUpdates() {
+        updaterController.checkForUpdates(nil)
+    }
+}
+```
+
+### Appcast feed URL
+
+The feed URL is provided via a delegate:
+
+```swift macOS/SoftwareUpdateManager.swift
+private final class UpdaterDelegate: NSObject, SPUUpdaterDelegate {
+    func feedURLString(for updater: SPUUpdater) -> String? {
+        "https://raw.githubusercontent.com/jakerains/StoryFox/main/appcast.xml"
+    }
+}
+```
+
+<Note>
+XcodeGen doesn't support custom Info.plist keys, so we provide the feed URL via delegate instead of `SUFeedURL`.
+</Note>
+
+### Menu integration
+
+```swift StoryFoxApp.swift
+@main
+struct StoryFoxApp: App {
+    @State private var updateManager = SoftwareUpdateManager()
+
+    var body: some Scene {
+        WindowGroup {
+            MainView()
+        }
+
+        Settings {
+            MacSettingsView(updateManager: updateManager)
+        }
+        .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates...") {
+                    updateManager.checkForUpdates()
+                }
+                .disabled(!updateManager.canCheckForUpdates)
+            }
+        }
+    }
+}
+```
+
+## EdDSA key pair (one-time setup)
+
+Sparkle uses EdDSA signatures to verify DMG authenticity. Generate a key pair once:
+
+```bash
+make sparkle-setup
+```
+
+This runs:
+
+```bash
+# Find Sparkle tools in DerivedData
+SPARKLE_BIN_DIR=$(find ~/Library/Developer/Xcode/DerivedData -path "*/Sparkle/bin" -type d | head -1)
+
+# Generate key pair
+"$SPARKLE_BIN_DIR/generate_keys"
+```
+
+**Output:**
+```
+A key has been generated and saved in your Keychain.
+
+Insert the following into your Info.plist:
+
+<key>SUPublicEDKey</key>
+<string>abc123def456...</string>
+```
+
+<Steps>
+  <Step title="Copy the public key">
+    Save the `SUPublicEDKey` value from the output
+  </Step>
+
+  <Step title="Add to Info.plist">
+    Edit `Resources/StoryFox-Info.plist`:
+    ```xml Resources/StoryFox-Info.plist
+    <?xml version="1.0" encoding="UTF-8"?>
+    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+    <plist version="1.0">
+    <dict>
+        <key>SUPublicEDKey</key>
+        <string>abc123def456...</string>
+    </dict>
+    </plist>
+    ```
+  </Step>
+
+  <Step title="Reference in project.yml">
+    Update `project.yml` to use this Info.plist:
+    ```yaml project.yml
+    targets:
+      StoryFox:
+        settings:
+          base:
+            INFOPLIST_FILE: Resources/StoryFox-Info.plist
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+**Keep the private key safe!** It's stored in your macOS Keychain and is used to sign all updates. If lost, you'll need to generate a new key pair and redistribute the app with the new public key.
+</Warning>
+
+## Appcast.xml
+
+The appcast feed lists all available versions:
+
+```xml appcast.xml
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+    <channel>
+        <title>StoryFox</title>
+        <item>
+            <title>Version 1.9.2</title>
+            <sparkle:version>33</sparkle:version>
+            <sparkle:shortVersionString>1.9.2</sparkle:shortVersionString>
+            <pubDate>Tue, 03 Mar 2026 12:00:00 +0000</pubDate>
+            <enclosure
+                url="https://github.com/jakerains/StoryFox/releases/download/v1.9.2/StoryFox.dmg"
+                sparkle:edSignature="abc123..."
+                length="123456789"
+                type="application/octet-stream"
+            />
+            <description><![CDATA[
+                <h2>Version 1.9.2</h2>
+                <ul>
+                  <li>Fixed character consistency in multi-page stories</li>
+                  <li>Improved EPUB export metadata</li>
+                </ul>
+            ]]></description>
+        </item>
+    </channel>
+</rss>
+```
+
+### Generate appcast
+
+After building a DMG, regenerate the appcast:
+
+```bash
+make appcast
+```
+
+This runs:
+
+```bash
+SPARKLE_BIN_DIR=$(find ~/Library/Developer/Xcode/DerivedData -path "*/Sparkle/bin" -type d | head -1)
+
+"$SPARKLE_BIN_DIR/generate_appcast" \
+  --download-url-prefix "https://github.com/jakerains/StoryFox/releases/download/v1.9.2/" \
+  -o appcast.xml \
+  dist
+```
+
+**What `generate_appcast` does:**
+
+- Scans `dist/` for all DMG files
+- Extracts version and build number from each `.app` bundle
+- Computes file size and EdDSA signature
+- Generates a new `appcast.xml` with `<item>` entries for each version
+
+<Note>
+The download URL prefix should match your GitHub release tag: `v{version}`.
+</Note>
+
+## Release notes injection
+
+After generating the appcast, inject release notes from `release-notes/*.html`:
+
+```bash
+./scripts/inject-release-notes.sh
+```
+
+This script:
+
+1. Finds all `release-notes/{version}.html` files
+2. Matches each to a `<sparkle:shortVersionString>` in `appcast.xml`
+3. Injects the HTML as `<description><![CDATA[...]]></description>`
+
+### Example release note
+
+```html release-notes/1.9.2.html
+<h2>Version 1.9.2</h2>
+<ul>
+  <li>Fixed character consistency in multi-page stories</li>
+  <li>Improved EPUB export metadata</li>
+  <li>Added support for landscape book format</li>
+</ul>
+```
+
+After injection, the appcast item will include:
+
+```xml
+<item>
+    <title>Version 1.9.2</title>
+    <sparkle:version>33</sparkle:version>
+    <sparkle:shortVersionString>1.9.2</sparkle:shortVersionString>
+    <description><![CDATA[
+        <h2>Version 1.9.2</h2>
+        <ul>
+          <li>Fixed character consistency in multi-page stories</li>
+          <li>Improved EPUB export metadata</li>
+          <li>Added support for landscape book format</li>
+        </ul>
+    ]]></description>
+    <enclosure url="..." sparkle:edSignature="..." />
+</item>
+```
+
+## Testing updates
+
+### Local testing
+
+1. Build a new DMG with a bumped version:
+   ```bash
+   # Edit project.yml: bump MARKETING_VERSION to 1.9.3
+   make dmg
+   ```
+
+2. Generate appcast:
+   ```bash
+   make appcast
+   ```
+
+3. Serve the appcast locally:
+   ```bash
+   python3 -m http.server 8000
+   ```
+
+4. Update the feed URL in `SoftwareUpdateManager.swift`:
+   ```swift
+   func feedURLString(for updater: SPUUpdater) -> String? {
+       "http://localhost:8000/appcast.xml"
+   }
+   ```
+
+5. Run the app and trigger **Check for Updates**
+
+### Production testing
+
+After pushing `appcast.xml` to GitHub:
+
+1. Verify the feed is accessible:
+   ```bash
+   curl https://raw.githubusercontent.com/jakerains/StoryFox/main/appcast.xml
+   ```
+
+2. Run an older version of StoryFox and check for updates
+
+## Troubleshooting
+
+### Issue: "Update signature verification failed"
+
+**Cause:** The EdDSA signature in `appcast.xml` doesn't match the DMG.
+
+**Solution:** Regenerate the appcast:
+```bash
+make appcast
+```
+
+Verify the signature manually:
+```bash
+SPARKLE_BIN_DIR=$(find ~/Library/Developer/Xcode/DerivedData -path "*/Sparkle/bin" -type d | head -1)
+"$SPARKLE_BIN_DIR/sign_update" dist/StoryFox.dmg
+```
+
+### Issue: "No updates found"
+
+**Cause:** The current version is the same or newer than the appcast version.
+
+**Solution:** Verify the version in `project.yml` is lower than the appcast version.
+
+### Issue: "Sparkle bin directory not found"
+
+**Cause:** Sparkle package hasn't been resolved yet.
+
+**Solution:** Build the project first to resolve dependencies:
+```bash
+make build
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Release workflow" href="/development/release-workflow" icon="rocket">
+    Automate the full release pipeline
+  </Card>
+  <Card title="Signing and notarization" href="/development/signing-and-notarization" icon="certificate">
+    Build signed and notarized DMGs
+  </Card>
+</CardGroup>

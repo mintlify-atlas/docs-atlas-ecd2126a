@@ -1,0 +1,227 @@
+---
+title: Building from source
+description: Clone, build, and run StoryFox from the GitHub repository
+---
+
+StoryFox uses XcodeGen to generate its Xcode project from a YAML spec. This keeps the project file clean and makes diffs readable.
+
+## Requirements
+
+- **macOS 26** (Tahoe) on Apple Silicon
+- **Xcode 26** with macOS 26 SDK
+- **XcodeGen** — install via Homebrew:
+  ```bash
+  brew install xcodegen
+  ```
+- **Apple Intelligence** enabled on your device (for on-device text generation)
+
+<Note>
+The iOS target exists in `project.yml` but is on hold. Focus on macOS development.
+</Note>
+
+## Clone the repository
+
+<Steps>
+  <Step title="Clone StoryFox">
+    ```bash
+    git clone https://github.com/jakerains/StoryFox.git
+    cd StoryFox
+    ```
+  </Step>
+
+  <Step title="Check your toolchain">
+    Run the doctor script to verify all dependencies:
+    ```bash
+    make doctor
+    ```
+
+    This checks:
+    - XcodeGen installation
+    - Xcode version and SDK availability
+    - Swift version (6.0 required)
+    - macOS deployment target compatibility
+  </Step>
+</Steps>
+
+## Generate the Xcode project
+
+The `StoryFox.xcodeproj` file is **generated** from `project.yml` and should not be edited manually:
+
+```bash
+make generate
+# or run the script directly:
+./scripts/generate.sh
+```
+
+This runs:
+```bash
+xcodegen generate --spec project.yml
+```
+
+<Warning>
+`xcodegen generate` can overwrite `Resources/StoryFox.entitlements` to an empty `<dict/>`. The `make dmg` target restores required entitlements automatically. If you see sandbox violations, verify your entitlements file.
+</Warning>
+
+## Build and run
+
+### Quick start
+
+Build and launch the Debug app:
+
+```bash
+make run
+```
+
+This generates the project, builds the Debug configuration, and opens the app.
+
+### Manual build
+
+Build without launching:
+
+```bash
+make build
+```
+
+Or use `xcodebuild` directly:
+
+```bash
+xcodebuild -project StoryFox.xcodeproj \
+  -scheme StoryFox \
+  -destination 'platform=macOS' \
+  build
+```
+
+### Release build
+
+Build the optimized Release configuration:
+
+```bash
+make build-release
+```
+
+Or run the Release build:
+
+```bash
+make run-release
+```
+
+## Build configurations
+
+| Configuration | Use case | Optimizations | Debug symbols |
+|---------------|----------|---------------|---------------|
+| **Debug** | Development and testing | Minimal | Full |
+| **Release** | Distribution and performance testing | Full | dSYM only |
+
+## Opening in Xcode
+
+After generating the project, open it in Xcode:
+
+```bash
+open StoryFox.xcodeproj
+```
+
+You can also build and run from Xcode's UI (Cmd+R).
+
+## Clean build artifacts
+
+Remove all build products:
+
+```bash
+make clean
+```
+
+This runs:
+```bash
+xcodebuild -project StoryFox.xcodeproj \
+  -scheme StoryFox \
+  -destination 'platform=macOS' \
+  clean
+```
+
+## Common build issues
+
+### Issue: XcodeGen not found
+
+**Symptom:** `xcodegen: command not found`
+
+**Solution:** Install XcodeGen via Homebrew:
+```bash
+brew install xcodegen
+```
+
+### Issue: Wrong Xcode version
+
+**Symptom:** Build fails with SDK errors
+
+**Solution:** Ensure Xcode 26 is installed and selected:
+```bash
+xcode-select --print-path
+sudo xcode-select --switch /Applications/Xcode.app
+```
+
+### Issue: Apple Intelligence unavailable
+
+**Symptom:** On-device text generation fails with "model not ready"
+
+**Solution:**
+1. Enable Apple Intelligence in **System Settings > Apple Intelligence & Siri**
+2. Wait for the model to finish downloading (check in Settings)
+3. Use Hugging Face cloud generation as an alternative
+
+### Issue: Sandbox violations
+
+**Symptom:** Network requests fail or file access denied
+
+**Solution:** Check that `Resources/StoryFox.entitlements` contains:
+```xml
+<dict>
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+</dict>
+```
+
+If it's empty, run `make dmg` (which restores entitlements) or edit manually.
+
+## Build script options
+
+The `scripts/build.sh` script supports flags:
+
+```bash
+./scripts/build.sh --release        # Build Release configuration
+./scripts/build.sh --clean          # Clean before building
+./scripts/build.sh --skip-generate  # Skip xcodegen (use existing .xcodeproj)
+```
+
+## Dependencies
+
+Dependencies are managed via Swift Package Manager and declared in `project.yml`:
+
+| Package | Version | Purpose |
+|---------|---------|----------|
+| **MLXSwift** | 0.30.6 | On-device model inference via Apple MLX |
+| **MLXSwiftLM** | 2.30.3 | Language model runtime for MLX |
+| **SwiftTransformers** | 1.1.6 | Hugging Face Hub model downloads |
+| **SwiftHuggingFace** | 0.5.0+ | Hugging Face Inference API client |
+| **Sparkle** | 2.8.1+ | Auto-update framework (macOS only) |
+
+Dependencies are resolved automatically on first build. If you need to reset:
+
+```bash
+rm -rf ~/Library/Developer/Xcode/DerivedData/StoryFox-*
+make build
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Makefile commands" href="/reference/make-commands" icon="terminal">
+    Explore all available make targets
+  </Card>
+  <Card title="Build DMG" href="/development/signing-and-notarization" icon="box">
+    Create a signed and notarized distributable
+  </Card>
+</CardGroup>

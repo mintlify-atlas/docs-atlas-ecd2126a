@@ -1,0 +1,146 @@
+---
+title: Creating your first story
+description: Learn how to create your first storybook with StoryFox
+---
+
+StoryFox makes it easy to generate beautifully illustrated children's books using AI. This guide walks you through creating your first story from start to finish.
+
+## Before you begin
+
+Make sure you have:
+- StoryFox installed on your Mac
+- A story idea or concept in mind
+- Either Apple Intelligence enabled OR a Hugging Face account for cloud generation
+
+## Choose your creation mode
+
+StoryFox offers three ways to create stories:
+
+<CardGroup cols={3}>
+  <Card title="Quick" icon="hare">
+    Enter your idea and go — the fastest way to create a story
+  </Card>
+  <Card title="Guided" icon="sparkle.magnifyingglass">
+    AI asks questions to enrich your story concept
+  </Card>
+  <Card title="Author" icon="pencil.and.outline">
+    Write your own story and get AI illustrations
+  </Card>
+</CardGroup>
+
+## Creating a story in Quick mode
+
+<Steps>
+  <Step title="Open StoryFox">
+    Launch the app from your Applications folder or Dock.
+  </Step>
+
+  <Step title="Enter your story concept">
+    In the main text field, describe your story idea. For example:
+    
+    > "A brave little fox who learns to share with forest friends"
+    
+    The more specific you are, the better your story will be. Include:
+    - Main character and their traits
+    - Setting or world
+    - What happens or what they learn
+  </Step>
+
+  <Step title="Configure book settings">
+    Click the **wand and stars** button to open Book Setup:
+    
+    - **Page Count**: Choose 4-16 pages (even numbers only)
+    - **Illustration Style**: Pick from Illustration, Animation, or Sketch
+    
+    These settings determine your book's length and visual style.
+  </Step>
+
+  <Step title="Choose generation mode">
+    Select between Local or Cloud generation:
+    
+    - **Local**: Uses Apple Intelligence on your Mac (requires Apple silicon)
+    - **Cloud**: Uses Hugging Face models (requires login in Settings)
+    
+    The mode picker appears next to the Book Setup button.
+  </Step>
+
+  <Step title="Generate your story">
+    Click the **Squeeze a Story** button. StoryFox will:
+    
+    1. Generate your story text (title, pages, character descriptions)
+    2. Validate and enrich character descriptions
+    3. Create illustrations for the cover and every page
+    
+    This process takes 2-5 minutes depending on page count and generation mode.
+  </Step>
+
+  <Step title="Review your book">
+    Once generation completes, your book opens automatically in the reader view. Use the navigation arrows or swipe to browse pages.
+  </Step>
+</Steps>
+
+## Tips for better results
+
+<Tip>
+  **Be specific about your character**: Instead of "a dog," say "a golden retriever puppy with floppy ears." This helps maintain visual consistency across pages.
+</Tip>
+
+<Tip>
+  **Keep concepts simple**: StoryFox works best with single-story arcs appropriate for ages 3-8. Complex plots or multiple storylines may not fit well.
+</Tip>
+
+<Tip>
+  **Use the suggestion carousel**: If you're stuck for ideas, wait for the typewriter animation to show suggested story concepts you can use.
+</Tip>
+
+## What happens during generation?
+
+<AccordionGroup>
+  <Accordion title="Text generation phase">
+    StoryFox creates:
+    - A captivating title
+    - Character descriptions with species, colors, and traits
+    - Story text for each page (2-4 sentences per page)
+    - Image prompts describing the visual scene for each page
+    
+    The AI ensures every page advances the narrative and maintains a consistent tone.
+  </Accordion>
+
+  <Accordion title="Character validation (on-device only)">
+    When using Local mode, StoryFox runs additional quality checks:
+    - Validates character descriptions are complete
+    - Parses character names, species, and visual traits
+    - Enriches image prompts to guarantee character consistency
+    
+    This ensures your fox doesn't turn into a rabbit halfway through!
+  </Accordion>
+
+  <Accordion title="Illustration generation">
+    StoryFox generates images for:
+    - Cover page (based on title and concept)
+    - Every story page (based on the image prompt)
+    
+    Images generate concurrently in batches. You'll see the progress counter update as each illustration completes.
+  </Accordion>
+</AccordionGroup>
+
+## Handling errors
+
+If generation fails:
+
+- **Safety filter blocked**: The concept triggered content safety rules. Try rephrasing with gentler, child-friendly language.
+- **Model unavailable**: For Local mode, ensure Apple Intelligence is enabled in System Settings. For Cloud mode, check your Hugging Face credentials in Settings.
+- **Network error**: Check your internet connection (required for Cloud mode).
+
+Click **Retry** to try again, or **Dismiss** to return to the creation screen.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Try guided mode" icon="sparkle.magnifyingglass" href="/guides/guided-mode">
+    Let AI ask questions to enrich your story
+  </Card>
+  <Card title="Export your book" icon="arrow.down.doc" href="/guides/exporting-books">
+    Save as PDF or EPUB to share
+  </Card>
+</CardGroup>

@@ -1,0 +1,379 @@
+---
+title: Character consistency
+description: Ensure characters look the same across all illustrations with validation, enrichment, and Foundation Model repair
+---
+
+StoryFox includes a multi-layer character consistency system that ensures your main characters look the same on every page. The system validates character descriptions, enriches image prompts with visual details, and guarantees species consistency across all illustrations.
+
+## The consistency challenge
+
+Image generation models create each illustration independently without memory of previous pages. To maintain visual consistency, StoryFox must explicitly include character descriptions in every image prompt.
+
+<Warning>
+  Small on-device language models often generate image prompts that reference characters by name only: "Luna walking through a forest". Image models can't look up who "Luna" is, resulting in different-looking characters on each page.
+</Warning>
+
+## Three-layer consistency system
+
+<Steps>
+  <Step title="Character description validation">
+    Validate and repair character descriptions from the story generation output
+  </Step>
+  
+  <Step title="Image prompt enrichment">
+    Inject character visual details into prompts that mention characters by name
+  </Step>
+  
+  <Step title="Species guarantee">
+    Ensure every page contains the primary character's species word
+  </Step>
+</Steps>
+
+## Layer 1: Character description validation
+
+After story generation, character descriptions are validated for quality and completeness.
+
+### Quality check
+
+A description is "adequate" if it has at least one line with a character name and 4+ words of visual detail:
+
+```swift
+private static func isAdequate(_ desc: String) -> Bool {
+    let lines = desc.components(separatedBy: .newlines)
+        .filter { !$0.isEmpty }
+    
+    return lines.contains { line in
+        let words = line.split(whereSeparator: \.isWhitespace)
+        let hasDashFormat = line.contains(" - ") && words.count >= 4
+        let hasEnoughDetail = words.count >= 5
+        return hasDashFormat || hasEnoughDetail
+    }
+}
+```
+
+### Foundation Model repair
+
+If character descriptions are inadequate, the system uses Foundation Models to extract characters from image prompts:
+
+```swift
+static func validateAsync(
+    descriptions: String,
+    pages: [StoryPage],
+    title: String
+) async -> String {
+    let cleaned = normalize(descriptions)
+    
+    if isAdequate(cleaned) {
+        return cleaned
+    }
+    
+    // Try Foundation Model repair
+    if let repaired = await repairWithFoundationModel(pages: pages, title: title) {
+        if isAdequate(normalized) {
+            return normalized
+        }
+    }
+    
+    // Fall back to heuristic extraction
+    return validate(descriptions: descriptions, pages: pages, title: title)
+}
+```
+
+### FM repair prompt
+
+```swift
+let session = LanguageModelSession(
+    instructions: """
+        You are analyzing a children's storybook to identify its characters.
+        Read the image prompts below and produce a character description sheet.
+        Format: one line per character, "Name - species/breed, visual details".
+        Use lowercase for species. Include colors, clothing, and one distinguishing feature.
+        Only list characters that appear in at least two prompts.
+        Do NOT invent details not present in the prompts.
+        """
+)
+```
+
+### Fallback extraction
+
+If Foundation Models are unavailable, the validator extracts character names from image prompts:
+
+<Accordion title="Heuristic extraction logic">
+  ```swift
+  private static func extractFromImagePrompts(pages: [StoryPage]) -> String {
+      var characterNames: [String] = []
+      
+      for page in pages {
+          // Extract text before first comma - likely the character name
+          if let commaIndex = prompt.firstIndex(of: ",") {
+              let candidate = String(prompt[..<commaIndex])
+              
+              if isLikelyCharacterName(candidate) {
+                  characterNames.append(normalized)
+              }
+          }
+      }
+      
+      // Build minimal descriptions from extracted names
+      var descriptions: [String] = []
+      for name in characterNames.prefix(4) {
+          let details = findAppearanceDetails(for: name, in: pages)
+          descriptions.append("\(name) - \(details)")
+      }
+      
+      return descriptions.joined(separator: "\n")
+  }
+  ```
+</Accordion>
+
+## Layer 2: Image prompt enrichment
+
+The enrichment system detects bare character names and injects species and appearance details using appositive grammar.
+
+### How enrichment works
+
+<Tabs>
+  <Tab title="Before enrichment">
+    ```
+    "Luna walking through a forest at sunset"
+    ```
+    
+    ❌ Image model doesn't know who Luna is or what species
+  </Tab>
+  
+  <Tab title="After enrichment">
+    ```
+    "Luna, a small orange fox with a green scarf, walking through a forest at sunset"
+    ```
+    
+    ✅ Image model has species and visual details
+  </Tab>
+</Tabs>
+
+### Parsing character descriptions
+
+The enricher parses character descriptions into structured entries:
+
+```swift
+struct CharacterEntry {
+    let name: String
+    let species: String
+    let visualSummary: String
+    let injectionPhrase: String  // "a small orange fox with a green scarf"
+}
+
+static func parseCharacterDescriptions(_ descriptions: String) -> [CharacterEntry] {
+    let lines = descriptions
+        .components(separatedBy: .newlines)
+        .filter { !$0.isEmpty }
+    
+    return lines.compactMap { line -> CharacterEntry? in
+        // Split on " - " or " – " or ": "
+        guard let name = extractName(from: line),
+              let details = extractDetails(from: line) else {
+            return nil
+        }
+        
+        let species = speciesWords.first { details.lowercased().contains($0) } ?? ""
+        let injection = buildInjectionPhrase(from: details)
+        
+        return CharacterEntry(
+            name: name,
+            species: species,
+            visualSummary: details,
+            injectionPhrase: injection
+        )
+    }
+}
+```
+
+### Species word detection
+
+The enricher maintains a comprehensive list of species words:
+
+```swift
+static let speciesWords: Set<String> = [
+    "fox", "rabbit", "bunny", "bear", "cat", "kitten", "dog", "puppy",
+    "mouse", "owl", "deer", "bird", "dragon", "unicorn", "frog", "turtle",
+    // ... 80+ species words including dog breeds ("dachshund", "corgi")
+]
+```
+
+### Injection logic
+
+The enricher only injects when necessary:
+
+```swift
+private static func enrichPrompt(_ prompt: String, characters: [CharacterEntry]) -> String {
+    var result = prompt
+    
+    for character in characters {
+        let nameLower = character.name.lowercased()
+        let promptLower = result.lowercased()
+        
+        // Skip if this character isn't mentioned
+        guard promptLower.contains(nameLower) else { continue }
+        
+        // Skip if species is already present
+        if !character.species.isEmpty, promptLower.contains(character.species) {
+            continue
+        }
+        
+        // Inject description
+        result = injectDescription(
+            in: result,
+            name: character.name,
+            injection: character.injectionPhrase
+        )
+    }
+    
+    return result
+}
+```
+
+### Foundation Model parsing
+
+For higher-quality parsing, the enricher can use Foundation Models:
+
+```swift
+static func parseCharacterDescriptionsAsync(_ descriptions: String) async -> [CharacterEntry] {
+    guard SystemLanguageModel.default.availability == .available else {
+        return parseCharacterDescriptions(descriptions)  // Fallback to regex
+    }
+    
+    let session = LanguageModelSession(
+        instructions: """
+            You are parsing a character description sheet from a children's storybook.
+            Extract each character's name, species/breed (lowercase), visual details,
+            and a natural injection phrase for image generation.
+            The injection phrase should read naturally in a sentence, e.g.
+            "a brown dachshund wearing a tiny cowboy hat" or
+            "a small orange fox with a green scarf".
+            Always start the injection phrase with "a" or "an".
+            """
+    )
+    
+    let response = try await session.respond(
+        to: "Parse these character descriptions: \"\(descriptions)\"",
+        generating: ParsedCharacterSheet.self
+    )
+    
+    return response.content.characters
+}
+```
+
+## Layer 3: Species guarantee
+
+The final safety net ensures every page contains the primary character's species word:
+
+```swift
+static func guaranteeSpeciesConsistency(in book: StoryBook) -> StoryBook {
+    let characters = parseCharacterDescriptions(book.characterDescriptions)
+    guard let primary = characters.first, !primary.species.isEmpty else { 
+        return book 
+    }
+    
+    let species = primary.species.lowercased()
+    
+    let guaranteedPages = book.pages.map { page in
+        let promptLower = page.imagePrompt.lowercased()
+        if promptLower.contains(species) {
+            return page
+        }
+        
+        // Species missing - prepend a species anchor
+        let anchor = primary.injectionPhrase.prefix(1).uppercased() 
+            + primary.injectionPhrase.dropFirst()
+        let fixedPrompt = "\(anchor). \(page.imagePrompt)"
+        
+        return StoryPage(
+            pageNumber: page.pageNumber,
+            text: page.text,
+            imagePrompt: fixedPrompt
+        )
+    }
+    
+    return StoryBook(
+        title: book.title,
+        authorLine: book.authorLine,
+        moral: book.moral,
+        characterDescriptions: book.characterDescriptions,
+        pages: guaranteedPages
+    )
+}
+```
+
+## Character prefix format
+
+The enricher uses a natural "Featuring" format that diffusion models parse better:
+
+<CodeGroup>
+  ```swift New format (recommended)
+  "Featuring Luna, a small orange fox with a green scarf. Walking through the forest at sunset."
+  ```
+  
+  ```swift Legacy format
+  "Characters: Luna - small orange fox, green scarf. Scene: Walking through the forest at sunset."
+  ```
+</CodeGroup>
+
+### Building the prefix
+
+```swift
+static func buildCharacterPrefix(from characters: [CharacterEntry]) -> String {
+    guard !characters.isEmpty else { return "" }
+    
+    // Cap at 2 characters to stay within prompt length limits
+    let featured = characters.prefix(2)
+    let phrases = featured.map { char in
+        "\(char.name), \(char.injectionPhrase)"
+    }
+    
+    let prefix = "Featuring \(phrases.joined(separator: " and ")). "
+    return ContentSafetyPolicy.sanitizeConcept(prefix, maxLength: 200)
+}
+```
+
+## Integration with illustration generation
+
+The character consistency system runs before illustration generation:
+
+<Steps>
+  <Step title="Validate character descriptions">
+    After story generation, validate and repair character descriptions
+  </Step>
+  
+  <Step title="Enrich image prompts">
+    Inject character details into all image prompts
+  </Step>
+  
+  <Step title="Guarantee species">
+    Ensure primary character species appears on every page
+  </Step>
+  
+  <Step title="Generate illustrations">
+    Pass enriched prompts to the illustration generator
+  </Step>
+</Steps>
+
+## Evaluation metrics
+
+The enricher includes a test harness that evaluates character consistency:
+
+```swift
+struct HarnessResult {
+    let characterDescriptionScore: Double    // 0.0-1.0
+    let speciesInPromptsScore: Double       // % of pages with species
+    let appearanceInPromptsScore: Double    // % of pages with visual details
+    let nameConsistencyScore: Double        // % of pages with character name
+    let overallScore: Double                // Weighted average
+}
+```
+
+## Next steps
+
+After character consistency processing:
+
+- Enriched prompts are sent to [illustration generation](/features/illustrations)
+- Character reference images (if provided) are used across all pages
+- The system tracks which variants succeeded for diagnostics

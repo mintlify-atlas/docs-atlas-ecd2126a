@@ -1,0 +1,277 @@
+---
+title: Working with characters
+description: Understand how StoryFox maintains visual consistency across illustrations
+---
+
+Character consistency is one of the biggest challenges in AI-generated picture books. StoryFox uses multiple techniques to ensure your fox doesn't turn into a rabbit halfway through the story.
+
+## How character consistency works
+
+StoryFox employs a multi-stage pipeline to maintain consistent character appearance:
+
+<Steps>
+  <Step title="Character description generation">
+    During text generation, the AI creates a dedicated `characterDescriptions` field with visual details for each character:
+    
+    ```
+    Luna - small orange fox, green scarf, curious eyes
+    Oliver - round gray owl, red bow tie, big amber eyes
+    ```
+    
+    This serves as the visual reference for all illustrations.
+  </Step>
+
+  <Step title="Character validation (on-device)">
+    When using Local mode with Apple Intelligence, StoryFox validates that character descriptions include:
+    - Specific species or breed ("golden retriever" not just "dog")
+    - Colors and distinctive features
+    - Clothing or accessories
+    
+    Incomplete descriptions are automatically repaired before illustration.
+  </Step>
+
+  <Step title="Character parsing">
+    StoryFox extracts structured data from the descriptions:
+    - Name: "Luna"
+    - Species: "fox"
+    - Visual summary: "small orange fox, green scarf, curious eyes"
+    - Injection phrase: "a small orange fox with a green scarf"
+  </Step>
+
+  <Step title="Image prompt enrichment">
+    Each page's image prompt is analyzed. If a character is mentioned by name but their species is missing, StoryFox injects their full description:
+    
+    **Before**: "Luna walking through a forest"
+    
+    **After**: "Luna, a small orange fox with a green scarf, walking through a forest"
+    
+    This ensures every image model gets complete visual information.
+  </Step>
+
+  <Step title="Species guarantee pass">
+    As a final safety net, StoryFox checks every prompt for the main character's species. If missing, it prepends a species anchor:
+    
+    "A small orange fox. [original prompt]"
+  </Step>
+</Steps>
+
+## Why character descriptions matter
+
+Image generation models process each page **independently**. They can't "remember" what the character looked like on page 1 when generating page 5.
+
+<Warning>
+  **Image models are not connected**: Each illustration is generated from scratch using only the text prompt for that specific page. Visual consistency requires complete descriptions in every prompt.
+</Warning>
+
+Without proper enrichment, prompts like "The hero finds a treasure" would produce random visual appearances since the model doesn't know who "the hero" is or what they look like.
+
+## Best practices for character consistency
+
+### Be specific in your concept
+
+<CodeGroup>
+```text Vague (Poor)
+A dog goes on an adventure
+```
+
+```text Specific (Good)
+A brown dachshund wearing a tiny cowboy hat explores the Wild West
+```
+</CodeGroup>
+
+The specific version ensures the AI generates detailed character descriptions that reference:
+- Exact breed ("dachshund" not "dog")
+- Colors ("brown")
+- Distinctive clothing ("tiny cowboy hat")
+- Setting context ("Wild West")
+
+### Use consistent naming
+
+If your character is named "Luna," use that name throughout your concept. Don't switch between "Luna," "the fox," and "she" — pick one primary name.
+
+### Include visual traits early
+
+Mention colors, clothing, or distinctive features in your opening concept:
+
+<Tip>
+  ✅ "A small orange fox with a green scarf learns to share"
+  
+  ❌ "A fox learns to share" (no visual details)
+</Tip>
+
+## Advanced: Premium character features
+
+<Note>
+  Premium Plus features require dev mode to be enabled. These are experimental features not yet available to all users.
+</Note>
+
+### Character sheet generation
+
+Premium Plus users get an extra consistency layer:
+
+1. **Character sheet creation**: After text generation, StoryFox creates a style-matched reference image of the main character
+2. **Visual anchoring**: This reference image guides all subsequent page illustrations
+3. **Style consistency**: The character sheet uses your selected illustration style (Illustration, Animation, or Sketch)
+
+The character sheet is generated from:
+- Main character description
+- Illustration style setting
+- Book format dimensions
+- Optional uploaded photo reference
+
+### Photo upload for characters
+
+Premium Plus allows uploading reference photos:
+
+<Steps>
+  <Step title="Upload character photos">
+    On the creation screen (when Premium Plus is active), you'll see a Character Photos section. Click **Add Photo** to upload images.
+  </Step>
+
+  <Step title="Name your character">
+    Each photo gets a name field. This name should match the character name in your story concept.
+  </Step>
+
+  <Step title="Generate with photos">
+    The uploaded photos influence:
+    - Character sheet generation (visual reference)
+    - Text generation (character names are passed to the AI)
+    - Illustration style (photos help maintain consistent appearance)
+  </Step>
+</Steps>
+
+<Warning>
+  Character photos work best with:
+  - Clear, well-lit images
+  - Simple backgrounds
+  - Photos showing the full character/subject
+  
+  Avoid blurry, cropped, or complex photos.
+</Warning>
+
+## Understanding the enrichment process
+
+### What gets enriched?
+
+StoryFox analyzes every image prompt looking for:
+
+1. **Character name mentions**: "Luna walked to the river"
+2. **Missing species**: The prompt doesn't contain "fox"
+3. **Injection opportunity**: A place to insert visual details
+
+### Enrichment example
+
+**Character sheet**:
+```
+Luna - small orange fox, green scarf, curious amber eyes
+Oliver - round gray owl, red bow tie, wise expression
+```
+
+**Original prompts** (from text generation):
+```
+1. Luna discovering a hidden path in the forest
+2. Luna and Oliver meeting at the old oak tree
+3. Oliver sharing wisdom with Luna
+```
+
+**Enriched prompts** (after processing):
+```
+1. Luna, a small orange fox with a green scarf, discovering a hidden path in the forest
+2. Luna, a small orange fox with a green scarf, and Oliver, a round gray owl with a red bow tie, meeting at the old oak tree
+3. Oliver, a round gray owl with a red bow tie, sharing wisdom with Luna, a small orange fox with a green scarf
+```
+
+### When enrichment is skipped
+
+StoryFox won't enrich a prompt if:
+
+- The species word already appears ("the small fox" means species is present)
+- The character isn't mentioned by name
+- The prompt already includes appearance details
+
+This prevents over-enrichment and keeps prompts natural.
+
+## Cloud vs on-device character handling
+
+### Cloud mode (Hugging Face, OpenAI)
+
+Cloud models produce higher-quality text and image prompts out of the box:
+- Character descriptions are already detailed
+- Image prompts naturally include species and appearance
+- Enrichment and validation steps are **skipped** (not needed)
+
+### Local mode (Apple Intelligence)
+
+On-device models (~3B parameters) need help:
+- Character descriptions may be sparse
+- Image prompts often mention names without species
+- **Full enrichment pipeline runs** (validation, parsing, enrichment, species guarantee)
+
+<Info>
+  The enrichment pipeline is a quality safety net designed for smaller on-device models. Cloud models don't need it because they're larger and more capable.
+</Info>
+
+## Troubleshooting character issues
+
+<AccordionGroup>
+  <Accordion title="Character looks different on every page">
+    This suggests the enrichment didn't work properly. Check:
+    - Was the character description generated correctly? (View it in the saved book)
+    - Did you use a very vague concept with no visual details?
+    - Are you using Cloud mode? (Cloud prompts may vary more but should still be consistent)
+    
+    **Fix**: Regenerate with a more specific concept including species and colors.
+  </Accordion>
+
+  <Accordion title="Wrong species appears">
+    The AI may have misunderstood your concept. Common issues:
+    - Ambiguous animals ("bunny" vs "rabbit" vs "hare")
+    - Mixed signals ("dog-like cat" confuses the model)
+    - Species substitution (small models sometimes change animals)
+    
+    **Fix**: Use unambiguous, specific species names. "Golden retriever" is better than "dog."
+  </Accordion>
+
+  <Accordion title="Character is missing from some pages">
+    Check the page text — if the character isn't mentioned in the story text, they may not appear in the illustration:
+    - Image prompts are derived from story text
+    - Side characters may not appear on every page
+    - Background characters naturally come and go
+    
+    **Fix**: This is usually correct behavior. If the main character is missing, regenerate the story.
+  </Accordion>
+
+  <Accordion title="Character sheet doesn't match illustrations">
+    Character sheets (Premium Plus) guide but don't force exact matches:
+    - Different poses and expressions are expected
+    - Minor color variations may occur
+    - Style interpretation varies by scene
+    
+    **Fix**: If the sheet is completely wrong, the reference photo may be unclear. Try a different photo or regenerate.
+  </Accordion>
+</AccordionGroup>
+
+## Technical details for developers
+
+The character consistency system is implemented across several components:
+
+- `ImagePromptEnricher.swift`: Main enrichment logic and character parsing
+- `CharacterDescriptionValidator.swift`: Validates and repairs descriptions using Foundation Models
+- `PromptAnalysisEngine.swift`: Analyzes prompts for species and appearance mentions
+- `IllustrationGenerator.swift`: Applies character sheet and photos during image generation
+
+Key files:
+- `/workspace/source/Shared/Generation/ImagePromptEnricher.swift:12` — Core enrichment engine
+- `/workspace/source/Shared/Generation/CharacterDescriptionValidator.swift` — Validation logic
+- `/workspace/source/Shared/ViewModels/CreationViewModel.swift:199` — Pipeline orchestration
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Export your book" icon="arrow.down.doc" href="/guides/exporting-books">
+    Save your character-consistent story
+  </Card>
+  <Card title="Create your first story" icon="book" href="/guides/creating-your-first-story">
+    Put character knowledge into practice
+  </Card>
+</CardGroup>

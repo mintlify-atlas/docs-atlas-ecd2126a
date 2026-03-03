@@ -1,0 +1,320 @@
+---
+title: Settings
+description: Configure StoryFox generation providers, fallback behavior, and audience mode
+---
+
+StoryFox provides comprehensive settings to customize story generation, provider selection, and output preferences.
+
+## General settings
+
+Open **Settings → General** to configure your primary generation providers and fallback behavior.
+
+### Provider selection
+
+Choose which AI engines power your stories:
+
+**Text provider:**
+
+Select the model used for writing story text. Available options:
+
+- **Apple Foundation** — On-device Apple Intelligence (default)
+- **Hugging Face** — Free cloud-based text generation
+- **OpenRouter** — Advanced cloud models (requires API key)
+
+Filter logic in source code (`GeneralSettingsTab.swift:32`):
+
+```swift
+ForEach(StoryTextProvider.allCases.filter { 
+    $0 != .togetherAI && 
+    $0 != .openAI && 
+    $0 != .mlxSwift && 
+    ($0 != .openRouter || hasOpenRouterKey) 
+}) { provider in
+    Text(provider.displayName).tag(provider)
+}
+```
+
+<Note>
+  MLX Swift, Together AI, and StoryFox Premium providers are hidden from the UI. OpenRouter only appears if you've saved an API key.
+</Note>
+
+**Image provider:**
+
+Select the model used for generating illustrations. Available options:
+
+- **Image Playground** — On-device Apple Intelligence (default)
+- **Hugging Face** — Free cloud-based image generation
+- **OpenRouter** — Advanced cloud models (requires API key)
+
+Filter logic (`GeneralSettingsTab.swift:47`):
+
+```swift
+ForEach(StoryImageProvider.allCases.filter { 
+    $0 != .diffusers && 
+    $0 != .togetherAI && 
+    $0 != .openAI && 
+    ($0 != .openRouter || hasOpenRouterKey) 
+}) { provider in
+    Text(provider.displayName).tag(provider)
+}
+```
+
+### Fallback behavior
+
+**Text fallback:**
+
+When enabled, StoryFox automatically retries failed text generation requests using Apple Foundation Models.
+
+- **Default:** Enabled
+- **Requirements:** Apple Silicon + macOS 26
+
+Use case: If your Hugging Face API quota is exceeded, StoryFox falls back to on-device generation to complete your story.
+
+**Image fallback:**
+
+When enabled, StoryFox falls back to Image Playground if cloud image generation fails.
+
+- **Default:** Enabled
+- **Requirements:** Apple Silicon + macOS 26
+
+### Audience mode
+
+Choose who the story is for — this adjusts language, tone, and complexity.
+
+<Tabs>
+  <Tab title="For Kids">
+    **Ages 3-8**
+
+    - Simple, playful language
+    - Shorter sentences
+    - Clear cause-and-effect narratives
+    - Age-appropriate vocabulary
+
+    **Icon:** Teddy bear (`teddybear`)
+
+    **Default:** Yes
+  </Tab>
+
+  <Tab title="For Everyone">
+    **All ages**
+
+    - Richer vocabulary
+    - More complex themes
+    - Longer sentences
+    - Broader narrative styles
+
+    **Icon:** People (`person.2`)
+  </Tab>
+</Tabs>
+
+**Change audience mode:**
+
+1. Open **Settings → General**
+2. Click your preferred audience chip under **Audience**
+
+The selected mode is highlighted with coral accent color.
+
+## Cloud settings
+
+Open **Settings → Cloud** to configure cloud provider credentials and model selection.
+
+### Hugging Face
+
+**Free cloud AI — recommended for most users**
+
+**Authentication methods:**
+
+<Tabs>
+  <Tab title="OAuth (Recommended)">
+    <Steps>
+      <Step title="Sign in">
+        Click **Sign in with Hugging Face** in Settings → Cloud.
+      </Step>
+
+      <Step title="Authorize">
+        A browser window opens. Click **Authorize** to grant inference access.
+      </Step>
+
+      <Step title="Verify">
+        StoryFox displays your Hugging Face username when signed in.
+      </Step>
+    </Steps>
+
+    **Token storage:**
+    - OAuth tokens stored in macOS Keychain
+    - Service: `com.jakerains.StoryFox.hf.oauth`
+    - Account: `hf-oauth-token`
+  </Tab>
+
+  <Tab title="API Token">
+    <Steps>
+      <Step title="Generate token">
+        Visit [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) and create a token with **Inference** scope.
+      </Step>
+
+      <Step title="Save token">
+        Expand **Use an API token instead** in Settings → Cloud → Hugging Face. Paste your token and click **Save Key**.
+      </Step>
+    </Steps>
+
+    **Token storage:**
+    - API keys stored in macOS Keychain
+    - Service: `com.jakerains.StoryFox.cloud.huggingFace`
+    - Account: `apiKey`
+  </Tab>
+</Tabs>
+
+**Model selection:**
+
+1. Click **Refresh Models** to load available models
+2. Choose a **Text Model** from the dropdown (recommended models appear first)
+3. Choose an **Image Model** from the dropdown
+
+**Default models:**
+- Text: `openai/gpt-oss-120b`
+- Image: `black-forest-labs/FLUX.1-schnell`
+
+### OpenRouter (Advanced)
+
+OpenRouter is collapsed by default under **Advanced** in Cloud settings.
+
+<Steps>
+  <Step title="Expand section">
+    Click the **OpenRouter** row to expand the configuration panel.
+  </Step>
+
+  <Step title="Save API key">
+    Paste your OpenRouter API key and click **Save Key**.
+  </Step>
+
+  <Step title="Select models">
+    Choose your preferred text and image models from the dropdowns.
+  </Step>
+</Steps>
+
+**Default models:**
+- Text: `google/gemini-3-flash-preview`
+- Image: `google/gemini-3-pro-image-preview`
+
+## On-device settings
+
+Open **Settings → On-Device** to configure local generation models.
+
+### Apple Foundation Models
+
+**No configuration required**
+
+- Runs entirely on-device using Apple Intelligence
+- Requires Apple Silicon and macOS 26
+- Selected as default text provider
+
+### MLX Swift (Hidden)
+
+MLX text models are currently hidden in the UI. To re-enable:
+
+1. Open `OnDeviceSettingsTab.swift`
+2. Uncomment line 18: `// mlxModelSection`
+
+**Curated models:**
+
+- `lmstudio-community/LFM2.5-1.2B-Instruct-MLX-4bit` — Small, fast (default)
+- `mlx-community/Qwen3-1.7B-4bit` — Balanced quality
+- `mlx-community/Qwen3-4B-4bit` — Higher quality
+
+**Custom models:**
+
+Enter any Hugging Face MLX model ID in the format `owner/model-name`.
+
+**Test model load:**
+
+Click **Test Model Load** to download and initialize the model. Progress shows download percentage.
+
+## Settings persistence
+
+Settings are stored in `ModelSelectionSettings` and persisted via `ModelSelectionStore`.
+
+**Storage location:**
+- User defaults key: Not explicitly shown in code (likely `NSUserDefaults`)
+
+**Stored fields:**
+
+```swift
+struct ModelSelectionSettings: Codable {
+    var textProvider: StoryTextProvider
+    var imageProvider: StoryImageProvider
+    var mlxModelID: String
+    var diffusersModelID: String
+    var hfTokenKeychainRef: String?
+    var diffusersRuntimeAlias: String
+    var enableFoundationFallback: Bool
+    var enableImageFallback: Bool
+    var audienceMode: AudienceMode
+    
+    // Cloud provider model IDs
+    var openRouterTextModelID: String
+    var openRouterImageModelID: String
+    var togetherTextModelID: String
+    var togetherImageModelID: String
+    var huggingFaceTextModelID: String
+    var huggingFaceImageModelID: String
+}
+```
+
+**Default values:**
+
+- Text provider: `appleFoundation`
+- Image provider: `imagePlayground`
+- MLX model: `lmstudio-community/LFM2.5-1.2B-Instruct-MLX-4bit`
+- Diffusers model: `black-forest-labs/FLUX.2-klein-4B`
+- Text fallback: Enabled
+- Image fallback: Enabled
+- Audience mode: `kid`
+
+## Keychain security
+
+All API keys and OAuth tokens are stored securely in the macOS Keychain.
+
+**Keychain services:**
+
+| Provider | Service | Accounts |
+|----------|---------|----------|
+| Hugging Face API | `com.jakerains.StoryFox.cloud.huggingFace` | `apiKey` |
+| Hugging Face OAuth | `com.jakerains.StoryFox.hf.oauth` | `hf-oauth-token` |
+| OpenRouter | `com.jakerains.StoryFox.cloud.openRouter` | `apiKey` |
+| Together AI | `com.jakerains.StoryFox.cloud.togetherAI` | `apiKey` |
+
+**Accessibility:**
+- `kSecAttrAccessibleAfterFirstUnlock` — Tokens accessible after first device unlock
+
+**Clear credentials:**
+
+Click **Clear Key** or **Sign Out** in Cloud settings to delete stored credentials.
+
+## Model caching
+
+`CloudModelListCache` caches available models for each provider to avoid repeated API calls.
+
+**Cache invalidation:**
+
+Click **Refresh Models** to force-reload the model list from the provider API.
+
+## Settings tabs
+
+StoryFox organizes settings into tabs:
+
+- **General** — Provider selection, fallback, audience mode
+- **Cloud** — Cloud provider credentials and model selection
+- **On-Device** — Local model configuration
+- **Premium** — StoryFox Premium subscription (hidden unless subscribed)
+- **About** — Version info, licenses, credits
+- **Debug** — Verbose logging, diagnostics (hidden in release builds)
+
+## Related files
+
+- `ModelSelectionSettings`: `~/workspace/source/Shared/Generation/GenerationProviderTypes.swift:106`
+- `GeneralSettingsTab`: `~/workspace/source/macOS/Views/Settings/GeneralSettingsTab.swift`
+- `CloudSettingsTab`: `~/workspace/source/macOS/Views/Settings/CloudSettingsTab.swift`
+- `OnDeviceSettingsTab`: `~/workspace/source/macOS/Views/Settings/OnDeviceSettingsTab.swift`
+- `CloudCredentialStore`: `~/workspace/source/Shared/Utilities/CloudCredentialStore.swift`
+- `HFTokenStore`: `~/workspace/source/Shared/Utilities/HFTokenStore.swift`
+- `HuggingFaceOAuth`: `~/workspace/source/Shared/Utilities/HuggingFaceOAuth.swift`

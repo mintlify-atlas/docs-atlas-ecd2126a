@@ -1,0 +1,347 @@
+---
+title: Generators
+description: Text and image generation protocols and implementations
+---
+
+StoryFox uses protocol-oriented generator interfaces to support multiple text and image generation backends. All generators are defined in `Shared/Generation/`.
+
+## StoryTextGenerating
+
+Protocol for text generation backends that produce complete `StoryBook` instances.
+
+### Properties
+
+<ResponseField name="availability" type="StoryProviderAvailability">
+  Async property indicating whether the provider is available and ready to generate stories
+</ResponseField>
+
+### Methods
+
+<ParamField path="generateStory(concept:pageCount:onProgress:)" type="async throws -> StoryBook">
+  Generates a complete storybook with the given concept and page count.
+
+  **Parameters:**
+  - `concept: String` - The user's story idea or prompt
+  - `pageCount: Int` - Number of pages to generate
+  - `onProgress: @escaping @MainActor @Sendable (String) -> Void` - Callback for partial text updates
+
+  **Returns:** A complete `StoryBook` with title, author, moral, character descriptions, and all pages with text and image prompts.
+
+  **Throws:** `LanguageModelSession.GenerationError` for guardrail violations or generation failures.
+</ParamField>
+
+### Example
+
+```swift StoryTextGenerating.swift:3-11
+protocol StoryTextGenerating: Sendable {
+    var availability: StoryProviderAvailability { get async }
+
+    func generateStory(
+        concept: String,
+        pageCount: Int,
+        onProgress: @escaping @MainActor @Sendable (String) -> Void
+    ) async throws -> StoryBook
+}
+```
+
+### Implementations
+
+<Expandable title="StoryGenerator">
+  Apple Foundation Models backend (on-device). Uses `LanguageModelSession` with structured generation via `@Generable` types. Supports both Foundation Chat Server (large models) and small on-device models.
+
+  **Key features:**
+  - Structured generation with `@Guide` annotations
+  - Guardrail safety filtering
+  - Partial text streaming
+  - Fallback to small model if large model unavailable
+</Expandable>
+
+<Expandable title="CloudTextGenerator">
+  Cloud provider backend (OpenAI, Hugging Face, OpenRouter, Together AI). Uses OpenAI-compatible chat completions API with JSON mode for structured output.
+
+  **Key features:**
+  - Multi-provider support via `CloudProvider` enum
+  - Premium tier awareness (injects character names for consistency)
+  - Illustration style awareness (adjusts prompts for visual style)
+  - Streaming text responses
+</Expandable>
+
+<Expandable title="MLXStoryGenerator">
+  MLX Swift backend for local LLM inference. Uses `mlx-swift` for on-device generation with smaller quantized models.
+
+  **Key features:**
+  - Local inference with no cloud dependency
+  - Streaming text generation
+  - JSON-based structured output parsing
+  - Automatic fallback to Foundation Models if enabled
+</Expandable>
+
+<Expandable title="RemoteStoryGenerator">
+  Foundation Chat Server backend for large on-device models. Connects to Foundation Model large models via local server endpoint.
+
+  **Key features:**
+  - Large model support (higher quality)
+  - Same structured generation as `StoryGenerator`
+  - Automatic availability checking
+  - Graceful fallback to small model
+</Expandable>
+
+## StoryImageGenerating
+
+Protocol for image generation backends that produce `CGImage` illustrations.
+
+### Properties
+
+<ResponseField name="provider" type="StoryImageProvider">
+  The image provider type (e.g., `.imagePlayground`, `.diffusers`, `.openAI`)
+</ResponseField>
+
+### Methods
+
+<ParamField path="generateImage(prompt:style:format:settings:referenceImage:onStatus:)" type="async throws -> CGImage">
+  Generates a single illustration image from the given prompt.
+
+  **Parameters:**
+  - `prompt: String` - Detailed scene description for the illustration
+  - `style: IllustrationStyle` - Visual style (illustration, animation, sketch)
+  - `format: BookFormat` - Book format (affects aspect ratio and dimensions)
+  - `settings: ModelSelectionSettings` - Model selection and provider settings
+  - `referenceImage: CGImage?` - Optional reference image for character consistency (Premium Plus)
+  - `onStatus: @Sendable @escaping (String) -> Void` - Callback for status updates
+
+  **Returns:** A `CGImage` at the appropriate resolution for the selected format.
+
+  **Throws:** Image generation errors (API failures, invalid prompts, etc.)
+</ParamField>
+
+<ParamField path="generateImage(prompt:style:format:settings:onStatus:)" type="async throws -> CGImage">
+  Convenience overload without reference image for generators that don't support it.
+
+  **Parameters:** Same as above, minus `referenceImage`.
+</ParamField>
+
+### Example
+
+```swift StoryImageGenerating.swift:4-15
+protocol StoryImageGenerating: Sendable {
+    var provider: StoryImageProvider { get }
+
+    func generateImage(
+        prompt: String,
+        style: IllustrationStyle,
+        format: BookFormat,
+        settings: ModelSelectionSettings,
+        referenceImage: CGImage?,
+        onStatus: @Sendable @escaping (String) -> Void
+    ) async throws -> CGImage
+}
+```
+
+### Implementations
+
+<Expandable title="ImagePlaygroundImageGenerator">
+  Apple Image Playground backend (iOS 18.2+, macOS 15.2+). Uses native `ImagePlaygroundUI` framework for high-quality on-device illustration generation.
+
+  **Key features:**
+  - Native Apple quality
+  - On-device privacy
+  - Style-aware (illustration, animation, sketch)
+  - Format-aware aspect ratios
+  - Fast generation (~5-10s per image)
+</Expandable>
+
+<Expandable title="DiffusersImageGenerator">
+  On-device Stable Diffusion backend using `swift-diffusers`. Runs Flux/SDXL models locally via CoreML.
+
+  **Key features:**
+  - Local inference (no cloud dependency)
+  - Supports Flux and SDXL models
+  - Negative prompt support
+  - Configurable steps and guidance
+  - Higher resolution output
+  - Slower generation (~30-60s per image)
+</Expandable>
+
+<Expandable title="CloudImageGenerator">
+  Cloud provider backend (OpenAI DALL·E, Hugging Face Flux). Uses API endpoints for cloud-based image generation.
+
+  **Key features:**
+  - Multi-provider support (OpenAI, Hugging Face)
+  - Character sheet generation (Premium Plus)
+  - Reference image support via img2img or edit endpoints
+  - Style prefix injection for consistency
+  - High resolution (1024x1024 to 1792x1024)
+</Expandable>
+
+## IllustrationGenerator
+
+Orchestrator that manages concurrent illustration generation for all pages in a storybook.
+
+### Properties
+
+<ResponseField name="generatedImages" type="[Int: CGImage]">
+  Dictionary of generated images keyed by index (0 = cover, 1+ = page numbers)
+</ResponseField>
+
+<ResponseField name="conceptDecompositions" type="[Int: ImageConceptDecomposition]">
+  Concept decompositions for each page (for debugging/transparency)
+</ResponseField>
+
+### Methods
+
+<ParamField path="generateIllustrations(for:coverPrompt:characterDescriptions:characterSheetImage:style:format:analyses:parsedCharacters:onProgress:)" type="async throws">
+  Generates all illustrations for a storybook (cover + all pages) with concurrency control.
+
+  **Parameters:**
+  - `for pages: [StoryPage]` - Story pages to illustrate
+  - `coverPrompt: String` - Prompt for the cover image
+  - `characterDescriptions: String` - Character visual references
+  - `characterSheetImage: CGImage?` - Optional character reference sheet (Premium Plus)
+  - `style: IllustrationStyle` - Visual style
+  - `format: BookFormat` - Book format
+  - `analyses: [Int: PromptAnalysis]` - Foundation Model prompt analyses
+  - `parsedCharacters: [ImagePromptEnricher.CharacterEntry]` - Parsed character traits
+  - `onProgress: @escaping (Int, CGImage) -> Void` - Callback for each completed image
+
+  **Concurrency:** Uses `GenerationConfig.maxConcurrentImages` to limit parallel generation.
+
+  **Species consistency:** Generates multiple variants per prompt (up to 5) and picks the first species-valid result.
+</ParamField>
+
+<ParamField path="generateSingleImage(prompt:style:format:startingVariantIndex:pageIndex:analysis:)" type="async throws -> CGImage">
+  Generates a single image with variant iteration for regeneration scenarios.
+
+  **Parameters:**
+  - `prompt: String` - Illustration prompt
+  - `style: IllustrationStyle` - Visual style
+  - `format: BookFormat` - Book format
+  - `startingVariantIndex: Int` - Which variant to start from (for retry logic)
+  - `pageIndex: Int` - Page index (for logging)
+  - `analysis: PromptAnalysis?` - Foundation Model prompt analysis
+
+  **Returns:** A validated `CGImage`.
+</ParamField>
+
+<ParamField path="setPremiumTier(_:)" type="func">
+  Sets the premium tier for tier-aware routing (Free, Plus, or Premium Plus)
+</ParamField>
+
+<ParamField path="setCharacterPhotos(_:)" type="func">
+  Sets user-uploaded character reference photos (Premium Plus only)
+</ParamField>
+
+<ParamField path="enrichPromptWithCharacters(_:characterDescriptions:parsedCharacters:)" type="static func">
+  Static utility that injects character traits into a prompt for visual consistency.
+
+  **Parameters:**
+  - `prompt: String` - Base prompt
+  - `characterDescriptions: String` - Raw character descriptions
+  - `parsedCharacters: [ImagePromptEnricher.CharacterEntry]` - Parsed character entries
+
+  **Returns:** Enriched prompt with character traits injected.
+</ParamField>
+
+<ParamField path="userFacingErrorMessage(for:)" type="static func">
+  Converts technical errors into user-friendly messages.
+
+  **Parameters:**
+  - `error: Error` - The error to convert
+
+  **Returns:** A human-readable error message (e.g., "Image generation timed out. Try regenerating.")
+</ParamField>
+
+### Example usage
+
+```swift
+let generator = IllustrationGenerator()
+generator.setPremiumTier(.premiumPlus)
+generator.setCharacterPhotos(userPhotos)
+
+try await generator.generateIllustrations(
+    for: storyBook.pages,
+    coverPrompt: coverPrompt,
+    characterDescriptions: storyBook.characterDescriptions,
+    characterSheetImage: characterSheet,
+    style: .illustration,
+    format: .standard,
+    analyses: analyses,
+    parsedCharacters: parsedCharacters
+) { index, image in
+    print("Generated image \(index)")
+    images[index] = image
+}
+
+let allImages = generator.generatedImages
+```
+
+## Helper generators
+
+<Expandable title="SuggestionGenerator">
+  Generates prompt suggestions for the creation screen typewriter animation.
+
+  **Method:**
+  ```swift
+  static func generate() async -> [String]?
+  ```
+
+  **Returns:** An array of 3-5 story concept suggestions, or nil if generation fails.
+
+  **Fallback:** `randomFallback()` returns a predefined set if generation fails.
+</Expandable>
+
+<Expandable title="AuthorImagePromptGenerator">
+  Generates image prompts for Author Mode stories where the user writes the text.
+
+  **Method:**
+  ```swift
+  static func generateImagePrompts(
+      characterDescriptions: String,
+      pages: [(pageNumber: Int, text: String)],
+      onProgress: @escaping @MainActor (String) -> Void
+  ) async throws -> ImagePromptSheet
+  ```
+
+  **Returns:** An `ImagePromptSheet` with prompts for all pages.
+
+  **Note:** Uses Foundation Models to generate visual scene descriptions from narrative text.
+</Expandable>
+
+<Expandable title="PromptAnalysisEngine">
+  Uses Foundation Models to analyze image prompts and extract species/traits for consistency validation.
+
+  **Methods:**
+  ```swift
+  static func analyzePrompts(_ prompts: [(index: Int, prompt: String)]) async -> [Int: PromptAnalysis]
+  static func analyzeSingle(prompt: String) async -> PromptAnalysis?
+  ```
+
+  **Returns:** Analysis containing primary species, traits, and visual anchors.
+
+  **Use case:** Validates that generated images match the expected species from the prompt.
+</Expandable>
+
+<Expandable title="ImagePromptEnricher">
+  Enriches image prompts with character traits for visual consistency.
+
+  **Methods:**
+  ```swift
+  static func parseCharacterDescriptions(_ descriptions: String) -> [CharacterEntry]
+  static func parseCharacterDescriptionsAsync(_ descriptions: String) async -> [CharacterEntry]
+  static func enrichImagePrompts(
+      in book: StoryBook,
+      analyses: [Int: PromptAnalysis],
+      parsedCharacters: [CharacterEntry]
+  ) -> StoryBook
+  static func guaranteeSpeciesConsistency(in book: StoryBook) -> StoryBook
+  ```
+
+  **Character entry:**
+  ```swift
+  struct CharacterEntry {
+      let name: String
+      let injectionPhrase: String  // e.g., "golden retriever with a red collar"
+  }
+  ```
+
+  **Use case:** Ensures every page prompt contains the main character's species and visual traits.
+</Expandable>

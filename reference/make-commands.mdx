@@ -1,0 +1,301 @@
+---
+title: Make commands
+description: Build, run, and distribution commands for StoryFox
+---
+
+StoryFox uses a `Makefile` to streamline common development and release tasks. All commands should be run from the project root.
+
+## Development commands
+
+<ParamField path="make help" type="command">
+  Display all available make targets with descriptions
+</ParamField>
+
+<ParamField path="make doctor" type="command">
+  Check local toolchain and SDK readiness. Runs `./scripts/doctor.sh` to validate:
+  - Xcode installation and version
+  - Command-line tools
+  - SPM dependencies
+  - Required frameworks (Foundation Models, Image Playground)
+</ParamField>
+
+<ParamField path="make generate" type="command">
+  Regenerate the Xcode project from `project.yml` using XcodeGen. Run this after:
+  - Adding/removing/renaming source files
+  - Modifying `project.yml` settings
+  - Changing entitlements
+
+  **Note:** This overwrites `StoryFox.xcodeproj`, so avoid manual Xcode project edits.
+</ParamField>
+
+<ParamField path="make build" type="command">
+  Generate project and build Debug macOS app. Equivalent to:
+  ```bash
+  ./scripts/generate.sh && ./scripts/build.sh
+  ```
+
+  **Output:** `DerivedData/.../StoryFox.app`
+</ParamField>
+
+<ParamField path="make run" type="command">
+  Build and open Debug macOS app. Runs `./scripts/run.sh`.
+</ParamField>
+
+<ParamField path="make build-release" type="command">
+  Build Release macOS app with optimizations. Runs `./scripts/build.sh --release`.
+</ParamField>
+
+<ParamField path="make run-release" type="command">
+  Build and open Release macOS app. Runs `./scripts/run.sh --release`.
+</ParamField>
+
+<ParamField path="make clean" type="command">
+  Clean Xcode build artifacts. Runs:
+  ```bash
+  xcodebuild -project StoryFox.xcodeproj -scheme StoryFox -destination 'platform=macOS' clean
+  ```
+</ParamField>
+
+<ParamField path="make app-path" type="command">
+  Print the absolute path to the built Debug .app bundle. Useful for scripting:
+  ```bash
+  APP_PATH=$(make app-path)
+  open "$APP_PATH"
+  ```
+
+  **Output example:**
+  ```
+  /Users/jakerains/Library/Developer/Xcode/DerivedData/StoryFox-abc123/Build/Products/Debug/StoryFox.app
+  ```
+</ParamField>
+
+<ParamField path="make purge-image-cache" type="command">
+  Remove local Diffusers runtime and model cache data. Runs `./scripts/purge_diffusers_cache.sh`. Use this to:
+  - Free up disk space (models can be ~5-10 GB)
+  - Force re-download of corrupted models
+  - Test first-run model download flow
+</ParamField>
+
+## iOS commands
+
+<Info>
+  StoryFox is currently macOS-first. The iOS target exists but is on hold. Do not mention iOS in user-facing copy unless explicitly requested.
+</Info>
+
+<ParamField path="make build-ios" type="command">
+  Build iOS Simulator Debug app. Uses the `StoryFox-iOS` scheme and targets:
+  ```
+  platform=iOS Simulator,name=iPhone 16 Pro,OS=26.0
+  ```
+
+  **Requires:** Xcode with iOS 18.2+ SDK and iPhone 16 Pro simulator installed.
+</ParamField>
+
+<ParamField path="make run-ios" type="command">
+  Build and launch in iOS Simulator. Steps:
+  1. Boot iPhone 16 Pro simulator (if not running)
+  2. Open Simulator.app
+  3. Install app to booted simulator
+  4. Launch with bundle ID `com.jakerains.StoryFox`
+</ParamField>
+
+## Distribution commands
+
+<ParamField path="make dmg" type="command">
+  Build, sign, notarize, and package a distributable DMG for macOS. This is the primary release workflow.
+
+  **Steps:**
+  1. Prepare `dist/` output directory
+  2. Regenerate Xcode project with XcodeGen
+  3. Restore entitlements (overwritten by XcodeGen)
+  4. Build Release archive with Developer ID signing
+  5. Export signed app
+  6. Notarize app with Apple
+  7. Staple notarization ticket to app
+  8. Create DMG with drag-to-Applications layout
+  9. Notarize and staple DMG
+
+  **Prerequisites (one-time):**
+  ```bash
+  xcrun notarytool store-credentials "StoryFox-Notarize" \
+    --apple-id <email> --team-id 47347VQHQV --password <app-specific-pw>
+  ```
+
+  **Output:** `dist/StoryFox.dmg`
+
+  **Signing identity:** `Developer ID Application: Jacob RAINS (47347VQHQV)`
+
+  **Duration:** ~10-15 minutes (full Release build + notarization)
+</ParamField>
+
+## Sparkle auto-update commands
+
+StoryFox uses [Sparkle 2](https://sparkle-project.org/) for automatic updates on macOS.
+
+<ParamField path="make sparkle-setup" type="command">
+  Generate EdDSA key pair for Sparkle update signing (one-time setup).
+
+  **Steps:**
+  1. Finds Sparkle bin directory in DerivedData (requires `make build` first)
+  2. Runs `generate_keys` tool
+  3. Stores private key in Keychain
+  4. Prints public key to copy into `project.yml` as `INFOPLIST_KEY_SUPublicEDKey`
+
+  **Important:** Save the public key to `project.yml` and commit it. The private key stays in your Keychain.
+</ParamField>
+
+<ParamField path="make appcast" type="command">
+  Regenerate `appcast.xml` from all DMGs in `dist/`.
+
+  **Steps:**
+  1. Finds Sparkle bin directory
+  2. Extracts version from exported app's `Info.plist`
+  3. Runs `generate_appcast` with GitHub release URL prefix
+  4. Outputs `appcast.xml` in project root
+
+  **Usage:**
+  ```bash
+  make dmg                    # Build distributable DMG
+  make appcast                # Regenerate appcast.xml
+  git add appcast.xml
+  git commit -m "Update appcast for v1.2.0"
+  git push origin main
+  ```
+
+  **Download URL pattern:**
+  ```
+  https://github.com/jakerains/StoryFox/releases/download/v{VERSION}/StoryFox.dmg
+  ```
+
+  **Appcast feed URL:**
+  ```
+  https://raw.githubusercontent.com/jakerains/StoryFox/main/appcast.xml
+  ```
+</ParamField>
+
+<ParamField path="make sign-update DMG=dist/StoryFox.dmg" type="command">
+  Print EdDSA signature for a specific DMG (for manual appcast editing).
+
+  **Usage:**
+  ```bash
+  make sign-update DMG=dist/StoryFox.dmg
+  ```
+
+  **Output:**
+  ```
+  EdDSA signature: MEUCIQDxyz...
+  ```
+
+  **Note:** Normally not needed — `make appcast` handles signing automatically.
+</ParamField>
+
+## Environment variables
+
+<ParamField path="SIGN_IDENTITY" type="variable" default="Developer ID Application: Jacob RAINS (47347VQHQV)">
+  Code signing identity for Release builds and DMG distribution
+</ParamField>
+
+<ParamField path="TEAM_ID" type="variable" default="47347VQHQV">
+  Apple Developer Team ID
+</ParamField>
+
+<ParamField path="NOTARY_PROFILE" type="variable" default="StoryFox-Notarize">
+  Notarization credential profile name (stored via `xcrun notarytool store-credentials`)
+</ParamField>
+
+<ParamField path="DMG_DIR" type="variable" default="dist">
+  Output directory for DMG and build artifacts
+</ParamField>
+
+<ParamField path="APP_NAME" type="variable" default="StoryFox">
+  Application name for DMG packaging
+</ParamField>
+
+<ParamField path="IOS_SCHEME" type="variable" default="StoryFox-iOS">
+  Xcode scheme for iOS builds
+</ParamField>
+
+<ParamField path="IOS_SIM_DEST" type="variable" default="platform=iOS Simulator,name=iPhone 16 Pro,OS=26.0">
+  iOS Simulator destination for builds
+</ParamField>
+
+<ParamField path="GITHUB_REPO_URL" type="variable" default="https://github.com/jakerains/StoryFox/releases/download">
+  Base URL for Sparkle appcast download links
+</ParamField>
+
+## Common workflows
+
+### Development build and run
+
+```bash
+make run
+```
+
+### Release build
+
+```bash
+make build-release
+```
+
+### Create distributable DMG
+
+```bash
+make dmg
+```
+
+### Full release workflow
+
+1. Bump version in `project.yml`:
+   ```yaml
+   MARKETING_VERSION: "1.2.0"
+   CURRENT_PROJECT_VERSION: "42"
+   ```
+
+2. Update changelog and release notes:
+   ```bash
+   vim landing/lib/changelog.ts
+   vim release-notes/1.2.0.html
+   ```
+
+3. Build and sign DMG:
+   ```bash
+   make dmg
+   ```
+
+4. Update appcast:
+   ```bash
+   make appcast
+   ```
+
+5. Commit and push:
+   ```bash
+   git add project.yml landing/lib/changelog.ts release-notes/1.2.0.html appcast.xml
+   git commit -m "Release v1.2.0"
+   git push origin main
+   ```
+
+6. Create GitHub release:
+   ```bash
+   gh release create v1.2.0 dist/StoryFox.dmg --title "v1.2.0" --notes-file release-notes/1.2.0.html
+   ```
+
+### Verify notarization
+
+```bash
+# Check stapled ticket
+stapler validate dist/StoryFox.dmg
+
+# Check app signature
+codesign -dv --verbose=4 dist/export/StoryFox.app
+
+# Check entitlements
+codesign -d --entitlements - dist/export/StoryFox.app
+```
+
+### Clean build and regenerate project
+
+```bash
+make clean
+make generate
+make build
+```

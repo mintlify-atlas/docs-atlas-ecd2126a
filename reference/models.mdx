@@ -1,0 +1,378 @@
+---
+title: Models
+description: Core data models for stories, pages, formats, and styles
+---
+
+StoryFox uses Swift structs and enums to represent storybooks, their pages, formats, and illustration styles. All models are defined in `Shared/Models/`.
+
+## StoryBook
+
+The primary data model representing a complete storybook with its pages.
+
+<ParamField path="title" type="String" required>
+  A captivating title for the children's storybook
+</ParamField>
+
+<ParamField path="authorLine" type="String" required>
+  The author attribution line (defaults to "Written by StoryFox")
+</ParamField>
+
+<ParamField path="moral" type="String" required>
+  A one-sentence summary of the story's moral or theme
+</ParamField>
+
+<ParamField path="characterDescriptions" type="String" required>
+  Brief visual reference for each main character. One line per character: name - specific species or breed, colors, clothing, one distinguishing feature.
+</ParamField>
+
+<ParamField path="pages" type="[StoryPage]" required>
+  Array of story pages with text and image prompts
+</ParamField>
+
+### Example
+
+```swift StoryBook.swift:5-20
+@Generable
+struct StoryBook {
+    @Guide(description: "A captivating title for this children's storybook")
+    var title: String
+
+    @Guide(description: "The author attribution line. Always use 'Written by StoryFox' unless the user explicitly provides an author name.")
+    var authorLine: String
+
+    @Guide(description: "A one-sentence summary of the story's moral or theme")
+    var moral: String
+
+    @Guide(description: "A brief visual reference for each main character...")
+    var characterDescriptions: String
+
+    @Guide(description: "The story pages array — you MUST generate the exact number of pages requested.")
+    var pages: [StoryPage]
+}
+```
+
+## StoryPage
+
+Represents a single page in a storybook with narrative text and illustration prompt.
+
+<ParamField path="pageNumber" type="Int" required>
+  The page number, starting from 1
+</ParamField>
+
+<ParamField path="text" type="String" required>
+  2-4 sentences of story text for this page. Uses simple vocabulary appropriate for children ages 3-8.
+</ParamField>
+
+<ParamField path="imagePrompt" type="String" required>
+  Detailed visual scene description for generating the page illustration. Must include character species/breed and key visual traits in every prompt for consistency.
+</ParamField>
+
+### Example
+
+```swift StoryBook.swift:22-32
+@Generable
+struct StoryPage {
+    @Guide(description: "The page number, starting from 1")
+    var pageNumber: Int
+
+    @Guide(description: "2-4 sentences of story text for this page...")
+    var text: String
+
+    @Guide(description: "A detailed visual scene description for generating an illustration...")
+    var imagePrompt: String
+}
+```
+
+## BookFormat
+
+Defines the physical dimensions and aspect ratio of the printed storybook.
+
+### Cases
+
+<ResponseField name="standard" type="BookFormat">
+  Classic 8.5" × 8.5" square picture book format (612 × 612 pts)
+</ResponseField>
+
+<ResponseField name="landscape" type="BookFormat">
+  Wide 11" × 8.5" landscape for panoramic illustrations (792 × 612 pts)
+</ResponseField>
+
+<ResponseField name="small" type="BookFormat">
+  Compact 6" × 6" mini board book format (432 × 432 pts)
+</ResponseField>
+
+<ResponseField name="portrait" type="BookFormat">
+  Tall 8.5" × 11" portrait format (612 × 792 pts)
+</ResponseField>
+
+### Properties
+
+<ResponseField name="displayName" type="String">
+  Human-readable name (e.g., "Standard Square", "Landscape")
+</ResponseField>
+
+<ResponseField name="description" type="String">
+  Full description with dimensions in inches
+</ResponseField>
+
+<ResponseField name="dimensions" type="CGSize">
+  Dimensions in points at 72 DPI for screen display
+</ResponseField>
+
+<ResponseField name="printDimensions" type="CGSize">
+  Dimensions in pixels at 300 DPI for print-ready PDF export
+</ResponseField>
+
+<ResponseField name="aspectRatio" type="CGFloat">
+  Width divided by height
+</ResponseField>
+
+<ResponseField name="iconName" type="String">
+  SF Symbol icon name (e.g., "square", "rectangle", "rectangle.portrait")
+</ResponseField>
+
+### Example
+
+```swift BookFormat.swift:3-18
+enum BookFormat: String, CaseIterable, Identifiable, Sendable {
+    case standard
+    case landscape
+    case small
+    case portrait
+
+    var displayName: String {
+        switch self {
+        case .standard:  "Standard Square"
+        case .landscape: "Landscape"
+        case .small:     "Small Square"
+        case .portrait:  "Portrait"
+        }
+    }
+    // ...
+}
+```
+
+## IllustrationStyle
+
+Defines the visual art style for generated illustrations.
+
+### Cases
+
+<ResponseField name="illustration" type="IllustrationStyle">
+  Classic children's book illustration style
+</ResponseField>
+
+<ResponseField name="animation" type="IllustrationStyle">
+  Pixar-inspired cartoon style
+</ResponseField>
+
+<ResponseField name="sketch" type="IllustrationStyle">
+  Hand-drawn pencil sketch style
+</ResponseField>
+
+### Properties
+
+<ResponseField name="displayName" type="String">
+  Human-readable name (e.g., "Illustration", "Animation", "Sketch")
+</ResponseField>
+
+<ResponseField name="description" type="String">
+  Full description of the style
+</ResponseField>
+
+<ResponseField name="iconName" type="String">
+  SF Symbol icon name ("paintbrush.fill", "film", "pencil.and.outline")
+</ResponseField>
+
+<ResponseField name="playgroundStyle" type="ImagePlaygroundStyle">
+  Maps to Apple's ImagePlayground style enum for native generation
+</ResponseField>
+
+### Example
+
+```swift IllustrationStyle.swift:4-17
+enum IllustrationStyle: String, CaseIterable, Identifiable, Sendable {
+    case illustration
+    case animation
+    case sketch
+
+    var displayName: String {
+        switch self {
+        case .illustration: "Illustration"
+        case .animation:    "Animation"
+        case .sketch:       "Sketch"
+        }
+    }
+    // ...
+}
+```
+
+## StoredStorybook
+
+SwiftData model for persisting storybooks to disk with images and metadata.
+
+<ParamField path="id" type="UUID" required>
+  Unique identifier for the stored storybook
+</ParamField>
+
+<ParamField path="title" type="String" required>
+  Story title
+</ParamField>
+
+<ParamField path="authorLine" type="String" required>
+  Author attribution
+</ParamField>
+
+<ParamField path="moral" type="String" required>
+  Story moral/theme
+</ParamField>
+
+<ParamField path="createdAt" type="Date" required>
+  Creation timestamp
+</ParamField>
+
+<ParamField path="formatRawValue" type="String" required>
+  Raw value of BookFormat enum
+</ParamField>
+
+<ParamField path="styleRawValue" type="String" required>
+  Raw value of IllustrationStyle enum
+</ParamField>
+
+<ParamField path="coverImageData" type="Data?">
+  PNG data for the cover image (index 0)
+</ParamField>
+
+<ParamField path="isFavorite" type="Bool" default="false">
+  Whether the book is marked as favorite
+</ParamField>
+
+<ParamField path="displayOrder" type="Int" default="0">
+  Sort order for custom arrangement
+</ParamField>
+
+<ParamField path="characterDescriptions" type="String" default='""'>
+  Character visual references
+</ParamField>
+
+<ParamField path="originalConcept" type="String" default='""'>
+  The original user prompt that generated this story
+</ParamField>
+
+<ParamField path="textProviderRawValue" type="String" default='""'>
+  Provider used for text generation (e.g., "appleFoundation", "openAI")
+</ParamField>
+
+<ParamField path="imageProviderRawValue" type="String" default='""'>
+  Provider used for image generation
+</ParamField>
+
+<ParamField path="textModelName" type="String" default='""'>
+  Specific model identifier used for text
+</ParamField>
+
+<ParamField path="imageModelName" type="String" default='""'>
+  Specific model identifier used for images
+</ParamField>
+
+<ParamField path="pages" type="[StoredPage]" required>
+  Cascade-delete relationship to story pages
+</ParamField>
+
+### Conversion methods
+
+<Expandable title="from(storyBook:images:format:style:...)">
+  Static factory method that converts a generated `StoryBook` and image dictionary into a `StoredStorybook` for persistence.
+
+  ```swift StoredStorybook.swift:97-108
+  @MainActor
+  static func from(
+      storyBook: StoryBook,
+      images: [Int: CGImage],
+      format: BookFormat,
+      style: IllustrationStyle,
+      concept: String = "",
+      textProvider: String = "",
+      imageProvider: String = "",
+      textModelName: String = "",
+      imageModelName: String = ""
+  ) -> StoredStorybook
+  ```
+</Expandable>
+
+<Expandable title="toStoryBook()">
+  Converts the persisted model back to a runtime `StoryBook` for the reader view.
+
+  ```swift StoredStorybook.swift:139-157
+  func toStoryBook() -> StoryBook {
+      let storyPages = pages
+          .sorted { $0.pageNumber < $1.pageNumber }
+          .map { page in
+              StoryPage(
+                  pageNumber: page.pageNumber,
+                  text: page.text,
+                  imagePrompt: page.imagePrompt
+              )
+          }
+      return StoryBook(...)
+  }
+  ```
+</Expandable>
+
+<Expandable title="toImages()">
+  Reconstructs the `[Int: CGImage]` dictionary from stored PNG data.
+
+  ```swift StoredStorybook.swift:160-175
+  func toImages() -> [Int: CGImage] {
+      var result: [Int: CGImage] = [:]
+      if let coverData = coverImageData, let cgImage = cgImageFromData(coverData) {
+          result[0] = cgImage
+      }
+      for page in pages {
+          if let data = page.imageData, let cgImage = cgImageFromData(data) {
+              result[page.pageNumber] = cgImage
+          }
+      }
+      return result
+  }
+  ```
+</Expandable>
+
+## StoredPage
+
+SwiftData model representing a single persisted page with text, prompt, and image data.
+
+<ParamField path="pageNumber" type="Int" required>
+  Page number within the story
+</ParamField>
+
+<ParamField path="text" type="String" required>
+  Story text for this page
+</ParamField>
+
+<ParamField path="imagePrompt" type="String" required>
+  Illustration prompt used to generate the page image
+</ParamField>
+
+<ParamField path="imageData" type="Data?">
+  PNG data for the generated illustration
+</ParamField>
+
+### Example
+
+```swift StoredStorybook.swift:78-91
+@Model
+final class StoredPage {
+    var pageNumber: Int
+    var text: String
+    var imagePrompt: String
+    var imageData: Data?
+
+    init(pageNumber: Int, text: String, imagePrompt: String, imageData: Data? = nil) {
+        self.pageNumber = pageNumber
+        self.text = text
+        self.imagePrompt = imagePrompt
+        self.imageData = imageData
+    }
+}
+```

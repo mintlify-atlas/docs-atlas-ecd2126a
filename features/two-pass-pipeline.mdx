@@ -1,0 +1,219 @@
+---
+title: Two-pass generation pipeline
+description: StoryFox uses a two-pass system to generate story text first, then create image prompts with full narrative context
+---
+
+StoryFox's two-pass generation pipeline separates text creation from image prompt generation. This architecture ensures image prompts have full story context and character consistency across all pages.
+
+## Why two passes?
+
+Generating everything in one pass creates inconsistencies:
+
+- Image prompts are written before the full narrative exists
+- No opportunity to validate character descriptions
+- Cannot ensure species consistency across pages
+- Character visual details may contradict between early and late pages
+
+<Info>
+  The two-pass system solves these problems by completing the entire narrative first, then using that context to generate consistent, detailed image prompts.
+</Info>
+
+## Pass 1: Story text generation
+
+The first pass focuses purely on narrative storytelling. The language model generates:
+
+- Story title
+- Author attribution
+- Character descriptions (visual reference sheet)
+- Story moral/theme
+- Page-by-page narrative text (without image prompts)
+
+```swift
+// Pass 1: Generate story text (no image prompts)
+let pass1System = StoryPromptTemplates.systemInstructions
+let textSession = LanguageModelSession(
+    instructions: pass1System
+)
+
+let textPrompt = StoryPromptTemplates.textOnlyPrompt(
+    concept: safeConcept,
+    pageCount: pageCount
+)
+
+let textStream = textSession.streamResponse(
+    to: textPrompt,
+    generating: TextOnlyStoryBook.self,
+    options: textOptions
+)
+
+let textResponse = try await textStream.collect()
+let textOnly = textResponse.content
+```
+
+### What Pass 1 produces
+
+```swift
+struct TextOnlyStoryBook {
+    var title: String
+    var authorLine: String
+    var moral: String
+    var characterDescriptions: String  // Visual reference sheet
+    var pages: [TextOnlyStoryPage]     // Text only, no imagePrompt
+}
+
+struct TextOnlyStoryPage {
+    var pageNumber: Int
+    var text: String  // 2-4 sentences of narrative
+}
+```
+
+## Pass 2: Image prompt generation
+
+After Pass 1 completes, the second pass uses the **complete story context** to generate detailed image prompts:
+
+```swift
+// Pass 2: Generate image prompts with full story context
+let pages = textOnly.pages.map { (pageNumber: $0.pageNumber, text: $0.text) }
+let imagePromptPrompt = StoryPromptTemplates.imagePromptPassPrompt(
+    characterDescriptions: textOnly.characterDescriptions,
+    pages: pages
+)
+
+let pass2System = "You are an art director for a children's storybook illustration team."
+let artSession = LanguageModelSession(instructions: pass2System)
+
+let promptResponse = try await artSession.respond(
+    to: imagePromptPrompt,
+    generating: ImagePromptSheet.self,
+    options: promptOptions
+)
+
+let promptSheet = promptResponse.content
+```
+
+### What Pass 2 produces
+
+```swift
+struct ImagePromptSheet {
+    var prompts: [PageImagePrompt]
+}
+
+struct PageImagePrompt {
+    var pageNumber: Int
+    var imagePrompt: String  // Detailed visual scene description
+}
+```
+
+## Benefits of the two-pass approach
+
+<CardGroup cols={2}>
+  <Card title="Full context" icon="book-open">
+    Image prompts are written after seeing the complete narrative, ensuring visual coherence
+  </Card>
+  
+  <Card title="Character consistency" icon="user-check">
+    Character descriptions are finalized before any image prompts are generated
+  </Card>
+  
+  <Card title="Validated descriptions" icon="shield-check">
+    Character descriptions pass through validation before being used in prompts
+  </Card>
+  
+  <Card title="Better retry logic" icon="rotate">
+    Each pass can retry independently without regenerating the entire story
+  </Card>
+</CardGroup>
+
+## Pass 2 fallback mechanism
+
+If structured generation fails in Pass 2, the system synthesizes safe prompts from the story text:
+
+```swift
+let finalPrompts: [PageImagePrompt]
+if let sheet = promptSheet {
+    finalPrompts = sheet.prompts
+} else {
+    // Fallback: synthesize prompts from story text
+    finalPrompts = textOnly.pages.map { page in
+        let description = textOnly.characterDescriptions.isEmpty
+            ? ""
+            : " Characters: \(textOnly.characterDescriptions)."
+        let synthesized = "A children's book illustration of: \(page.text)\(description) Warm, gentle, colorful scene."
+        return PageImagePrompt(
+            pageNumber: page.pageNumber,
+            imagePrompt: synthesized
+        )
+    }
+}
+```
+
+## Merging the two passes
+
+After both passes complete, the system merges text and image prompts into a complete `StoryBook`:
+
+```swift
+let promptsByPage = Dictionary(
+    finalPrompts.map { ($0.pageNumber, $0.imagePrompt) },
+    uniquingKeysWith: { _, last in last }
+)
+
+let mergedPages = textOnly.pages.enumerated().map { offset, page -> StoryPage in
+    let pageNumber = offset + 1
+    let prompt = promptsByPage[page.pageNumber]?
+        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    
+    return StoryPage(
+        pageNumber: pageNumber,
+        text: page.text,
+        imagePrompt: prompt.isEmpty ? fallbackPrompt : prompt
+    )
+}
+```
+
+## Character validation between passes
+
+Between Pass 1 and Pass 2, character descriptions are validated and optionally repaired using Foundation Models:
+
+<Steps>
+  <Step title="Check description quality">
+    Validate that character descriptions include species and visual details
+  </Step>
+  
+  <Step title="Foundation Model repair (if needed)">
+    If descriptions are inadequate, use FM to extract characters from image prompts
+  </Step>
+  
+  <Step title="Fallback extraction">
+    If FM is unavailable, use heuristic extraction from story text
+  </Step>
+</Steps>
+
+See [Character consistency](/features/character-consistency) for details on the validation system.
+
+## Performance logging
+
+Each pass is logged separately for diagnostics:
+
+```swift
+await VerboseGenerationLogger.shared.logTextPass(
+    sessionID: verboseSession,
+    passLabel: "Pass 1: Story Text (Foundation Models)",
+    provider: "Apple Foundation Models",
+    model: "on-device",
+    systemPrompt: pass1System,
+    userPrompt: textPrompt,
+    rawResponse: "Title: \(textOnly.title)\nPages: \(textOnly.pages.count)",
+    parseSuccess: true,
+    duration: pass1Seconds
+)
+```
+
+This allows you to see exactly how long each pass took and debug any failures.
+
+## Next steps
+
+After the two-pass pipeline completes:
+
+1. Character descriptions are enriched into image prompts
+2. [Illustrations](/features/illustrations) are generated for each page
+3. The complete book is ready for [export](/features/export)

@@ -1,0 +1,157 @@
+---
+title: Introduction
+description: Create beautifully illustrated children's storybooks with AI-powered text and image generation
+---
+
+<img
+  className="block dark:hidden"
+  src="/images/hero-light.png"
+  alt="StoryFox Hero"
+/>
+<img
+  className="hidden dark:block"
+  src="/images/hero-dark.png"
+  alt="StoryFox Hero"
+/>
+
+## Welcome to StoryFox
+
+StoryFox generates complete illustrated children's storybooks using a blend of on-device and cloud AI. Type a story idea, pick a style, and get a fully illustrated book with text, cover art, and export to PDF or EPUB — all in minutes.
+
+<CardGroup cols={2}>
+  <Card
+    title="Two-pass story generation"
+    icon="book-sparkles"
+    iconType="duotone"
+  >
+    Every text generator uses a two-pass pipeline for higher-quality illustrations. Pass 1 writes the complete story text, Pass 2 writes illustration prompts with full narrative context.
+  </Card>
+  
+  <Card
+    title="Character consistency"
+    icon="users"
+    iconType="duotone"
+  >
+    StoryFox generates a character sheet before creating illustrations. Each character's species, colors, clothing, and features are mechanically injected into every image prompt.
+  </Card>
+  
+  <Card
+    title="Export to PDF & EPUB"
+    icon="file-export"
+    iconType="duotone"
+  >
+    300 DPI print-ready PDFs with embedded cover, story pages, and end page. Fixed-layout EPUB 3.0 for Apple Books, Kindle, and other readers.
+  </Card>
+  
+  <Card
+    title="Multiple AI providers"
+    icon="cloud"
+    iconType="duotone"
+  >
+    Choose between on-device Apple Foundation Models, local MLX Swift models, or cloud providers like Hugging Face for both text and image generation.
+  </Card>
+</CardGroup>
+
+## How it works
+
+<Steps>
+  <Step title="Describe your story">
+    A concept, theme, or opening line. Switch between **Quick** mode (type and go) or **Guided** mode where the AI asks follow-up questions to flesh out characters, plot, and tone.
+  </Step>
+  
+  <Step title="Choose your settings">
+    Select page count (4-16), book format (Standard Square, Landscape, Portrait, Small Square), and illustration style (Illustration, Animation, or Sketch).
+  </Step>
+  
+  <Step title="Watch it generate">
+    Text streams in real-time, then illustrations render concurrently. The two-pass pipeline ensures page 1's illustration knows what happens on page 8 — characters look the same throughout.
+  </Step>
+  
+  <Step title="Read and export">
+    Flip through pages in the built-in reader, then export as print-ready PDF or fixed-layout EPUB. Edit text, regenerate individual images, or save to your library.
+  </Step>
+</Steps>
+
+<Note>
+  StoryFox uses structured output via `@Generable` macros for text generation — no fragile JSON parsing. Character descriptions are validated and enriched by Foundation Models to ensure visual consistency.
+</Note>
+
+## Generation pipeline
+
+StoryFox's generation pipeline follows this flow:
+
+```mermaid
+graph LR
+    A[Story Concept] --> B[Pass 1: Story Text]
+    B --> C[Pass 2: Image Prompts]
+    C --> D[Character Sheet]
+    D --> E[Concurrent Image Generation]
+    E --> F[Finished Book]
+```
+
+### Text generation providers
+
+| Provider | Type | Description |
+|----------|------|-------------|
+| **Apple FoundationModels** | On-device | Apple's ~3B parameter LLM via `@Generable` structured output — no API key needed |
+| **MLX Swift** | On-device | Run open-weight models locally (Qwen3, LFM2.5) via Hugging Face Hub |
+| **Hugging Face Inference** | Cloud | Access larger cloud models (GPT-OSS 120B, Qwen3 32B, DeepSeek V3, and more) |
+
+### Image generation providers
+
+| Provider | Type | Description |
+|----------|------|-------------|
+| **Image Playground** | On-device | Apple's built-in diffusion model — illustration, animation, and sketch styles |
+| **Hugging Face Inference** | Cloud | FLUX.1-schnell, HunyuanImage 3.0, SD 3.5 Medium, and more via HF's native inference endpoint |
+
+## Book formats
+
+<CardGroup cols={2}>
+  <Card title="Standard Square" icon="square">
+    Classic 8.5" × 8.5" square picture book format
+  </Card>
+  
+  <Card title="Landscape" icon="rectangle">
+    Wide 11" × 8.5" landscape for panoramic illustrations
+  </Card>
+  
+  <Card title="Portrait" icon="rectangle-vertical">
+    Tall 8.5" × 11" portrait format
+  </Card>
+  
+  <Card title="Small Square" icon="square-dashed">
+    Compact 6" × 6" mini board book format
+  </Card>
+</CardGroup>
+
+## Illustration styles
+
+StoryFox offers three distinct illustration styles powered by Image Playground:
+
+- **Illustration** — classic children's book art with painterly details and soft shading
+- **Animation** — Pixar-inspired cartoon style with rounded shapes and cinematic lighting  
+- **Sketch** — hand-drawn pencil lines with gentle watercolor fill
+
+<Warning>
+  When Image Playground's safety filters reject illustrations, a **Report Issue** button appears in the reader toolbar. It bundles the story, images, and diagnostic logs into a zip for investigation.
+</Warning>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Installation"
+    icon="download"
+    href="/installation"
+  >
+    Download the DMG and get started with StoryFox on macOS 26
+  </Card>
+  
+  <Card
+    title="Quickstart"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Create your first story end-to-end in under 5 minutes
+  </Card>
+</CardGroup>

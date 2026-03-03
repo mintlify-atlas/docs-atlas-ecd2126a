@@ -1,0 +1,447 @@
+---
+title: Generation pipeline
+description: How StoryFox generates story text and illustrations
+---
+
+StoryFox uses a two-pass generation pipeline to maintain visual consistency across all pages.
+
+## Pipeline overview
+
+```
+User Concept
+    |
+    v
+┌─────────────────────────┐
+│  Pass 1: Story Text     │  Foundation Models / MLX / Hugging Face
+│  - Title, moral         │  @Generable StoryBook
+│  - Character sheet      │  No image prompts yet
+│  - Page text (no art)   │
+└─────────────────────────┘
+    |
+    v
+┌─────────────────────────┐
+│  Pass 2: Image Prompts  │  Foundation Models with full story context
+│  - Cover prompt         │  @Generable ImagePromptSheet
+│  - Page prompts         │  Visual consistency enforcement
+└─────────────────────────┘
+    |
+    v
+┌─────────────────────────┐
+│  Image Generation       │  Image Playground / Hugging Face FLUX
+│  - Cover first          │  Concurrent with semaphore limit
+│  - Pages 1-N parallel   │  Character enrichment injection
+└─────────────────────────┘
+    |
+    v
+  Complete Book
+```
+
+## Why two passes?
+
+Single-pass generation produces **inconsistent characters** because the LLM doesn't know the full story when writing early image prompts. Page 1's illustration might show a "small brown rabbit," but page 8's prompt says "large gray rabbit" because the LLM changed its mind mid-generation.
+
+**Two-pass solves this:**
+
+1. **Pass 1** writes the complete story text + character descriptions
+2. **Pass 2** sees the full narrative and writes all image prompts at once, maintaining the same character details across every page
+
+## Pass 1: Story text
+
+### On-device (Foundation Models)
+
+```swift Shared/Generation/StoryGenerator.swift
+func generateStory(
+    concept: String,
+    pageCount: Int,
+    onProgress: @escaping @MainActor @Sendable (String) -> Void
+) async throws -> StoryBook {
+    let safeConcept = ContentSafetyPolicy.sanitizeConcept(concept)
+    let prompt = StoryPromptTemplates.storyPrompt(
+        concept: safeConcept,
+        pageCount: pageCount
+    )
+
+    // Pass 1: Generate text only
+    let model = SystemLanguageModel.default
+    let session = try await model.makeSession(systemPrompt: prompt)
+
+    var book: StoryBook?
+    for try await output in session.generate(returning: StoryBook.self, to: model) {
+        book = output.value
+        onProgress(partialText(from: book))
+    }
+
+    guard let finalBook = book else {
+        throw StoryGeneratorError.emptyResponse
+    }
+
+    return finalBook
+}
+```
+
+### Cloud (Hugging Face)
+
+```swift Shared/Generation/RemoteStoryGenerator.swift
+func generateStory(
+    concept: String,
+    pageCount: Int,
+    onProgress: @escaping @MainActor @Sendable (String) -> Void
+) async throws -> StoryBook {
+    let client = OpenAICompatibleClient(
+        baseURL: "https://router.huggingface.co/v1",
+        apiKey: HFTokenStore.load() ?? ""
+    )
+
+    let messages = [
+        ChatMessage(
+            role: .system,
+            content: StoryPromptTemplates.storyPrompt(
+                concept: concept,
+                pageCount: pageCount
+            )
+        ),
+        ChatMessage(role: .user, content: concept)
+    ]
+
+    let book = try await client.streamStructuredChat(
+        model: "meta-llama/Llama-3.3-70B-Instruct",
+        messages: messages,
+        returning: StoryBook.self,
+        onProgress: onProgress
+    )
+
+    return book
+}
+```
+
+## Pass 2: Image prompts
+
+After Pass 1 completes, `CreationViewModel` generates image prompts with full story context:
+
+```swift Shared/ViewModels/CreationViewModel.swift
+private func generateImagePrompts(
+    for textOnlyBook: TextOnlyStoryBook
+) async throws -> ImagePromptSheet {
+    let prompt = StoryPromptTemplates.imagePromptSheetPrompt(
+        title: textOnlyBook.title,
+        characterDescriptions: textOnlyBook.characterDescriptions,
+        pages: textOnlyBook.pages
+    )
+
+    // Foundation Model sees the complete story and writes all prompts at once
+    let model = SystemLanguageModel.default
+    let session = try await model.makeSession(systemPrompt: prompt)
+
+    var sheet: ImagePromptSheet?
+    for try await output in session.generate(returning: ImagePromptSheet.self, to: model) {
+        sheet = output.value
+    }
+
+    return sheet ?? ImagePromptSheet(prompts: [])
+}
+```
+
+## Character consistency
+
+### Character description extraction
+
+The LLM generates a character sheet in Pass 1:
+
+```
+Ruby - red fox, white chest patch, green scarf, bright curious eyes
+Oliver - barn owl, speckled brown feathers, small spectacles, wise expression
+```
+
+### Prompt enrichment
+
+Before generating images, StoryFox injects character details into **every** image prompt:
+
+```swift Shared/Generation/ImagePromptEnricher.swift
+static func enrichPrompt(
+    _ prompt: String,
+    characterDescriptions: String
+) -> String {
+    let characters = parseCharacters(from: characterDescriptions)
+
+    var enriched = prompt
+    for character in characters {
+        // Inject species, colors, clothing inline
+        enriched = enriched.replacingOccurrences(
+            of: character.name,
+            with: "\(character.name) (\(character.species), \(character.colors), \(character.clothing)))"
+        )
+    }
+
+    return enriched
+}
+```
+
+### Character validation
+
+If the LLM returns weak character descriptions (e.g., "a fox" instead of "red fox with white chest"), an async validator repairs them:
+
+```swift Shared/Generation/CharacterDescriptionValidator.swift
+func validate(_ characterDescriptions: String) async -> String {
+    let lines = characterDescriptions.split(separator: "\n")
+
+    for line in lines {
+        if !hasSpecificSpecies(line) || !hasColorDetails(line) {
+            // Re-prompt Foundation Model to add specifics
+            return try await enhanceCharacterDescription(line)
+        }
+    }
+
+    return characterDescriptions
+}
+```
+
+## Image generation
+
+### Provider routing
+
+```swift Shared/Generation/ImageGenerationRouter.swift
+func generateImage(
+    prompt: String,
+    style: IllustrationStyle,
+    format: BookFormat
+) async throws -> CGImage {
+    let settings = ModelSelectionStore.load()
+
+    switch settings.imageProvider {
+    case .imagePlayground:
+        return try await imagePlaygroundGenerator.generate(
+            prompt: prompt,
+            style: style,
+            format: format
+        )
+
+    case .huggingFace:
+        return try await cloudImageGenerator.generate(
+            prompt: prompt,
+            model: settings.imageModel ?? "black-forest-labs/FLUX.1-schnell",
+            style: style,
+            format: format
+        )
+
+    default:
+        throw ImageGenerationError.unsupportedProvider
+    }
+}
+```
+
+### Image Playground (on-device)
+
+```swift Shared/Generation/ImagePlaygroundImageGenerator.swift
+import ImagePlayground
+
+func generate(
+    prompt: String,
+    style: IllustrationStyle
+) async throws -> CGImage {
+    let ipStyle: ImagePlaygroundStyle = switch style {
+        case .illustration: .illustration
+        case .animation: .animation
+        case .sketch: .sketch
+    }
+
+    let request = ImagePlaygroundRequest(
+        prompt: prompt,
+        style: ipStyle
+    )
+
+    let image = try await ImagePlaygroundSession.shared.generate(request)
+    return image.cgImage
+}
+```
+
+### Hugging Face (cloud)
+
+```swift Shared/Generation/CloudImageGenerator.swift
+func generate(
+    prompt: String,
+    model: String
+) async throws -> CGImage {
+    let url = URL(string: "https://router.huggingface.co/hf-inference/models/\(model)")!
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.addValue("Bearer \(HFTokenStore.load() ?? "")", forHTTPHeaderField: "Authorization")
+    request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+
+    let body = [
+        "inputs": prompt,
+        "parameters": [
+            "width": 1024,
+            "height": 1024
+        ]
+    ]
+    request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+    let (data, _) = try await URLSession.shared.data(for: request)
+    guard let cgImage = CGImageSourceCreateWithData(data as CFData, nil)
+            .flatMap({ CGImageSourceCreateImageAtIndex($0, 0, nil) }) else {
+        throw ImageGenerationError.invalidImageData
+    }
+
+    return cgImage
+}
+```
+
+<Warning>
+**Hugging Face API Rules:**
+- Text generation uses OpenAI-compatible endpoint: `https://router.huggingface.co/v1/chat/completions`
+- Image generation uses native inference route: `POST https://router.huggingface.co/hf-inference/models/{model_id}`
+- Do NOT use `/v1/images/generations` for image gen — it returns 404
+</Warning>
+
+### Concurrent generation with semaphore
+
+```swift Shared/Generation/IllustrationGenerator.swift
+func generateIllustrations(
+    for pages: [StoryPage],
+    coverPrompt: String,
+    onImageReady: @MainActor @Sendable (Int, CGImage) -> Void
+) async throws {
+    let semaphore = AsyncSemaphore(limit: GenerationConfig.maxConcurrentImages)
+
+    // Phase A: Generate cover first (index 0)
+    let coverImage = try await generateSingleImage(
+        prompt: coverPrompt,
+        style: style,
+        pageIndex: 0
+    )
+    generatedImages[0] = coverImage
+    onImageReady(0, coverImage)
+
+    // Phase B: Generate all story pages concurrently (limited to 3 parallel)
+    try await withThrowingTaskGroup(of: (Int, CGImage).self) { group in
+        for page in pages {
+            await semaphore.wait()
+
+            group.addTask {
+                let image = try await self.generateSingleImage(
+                    prompt: page.imagePrompt,
+                    style: style,
+                    pageIndex: page.pageNumber
+                )
+                semaphore.signal()
+                return (page.pageNumber, image)
+            }
+        }
+
+        for try await (index, image) in group {
+            generatedImages[index] = image
+            onImageReady(index, image)
+        }
+    }
+}
+```
+
+## Progress tracking
+
+```swift Shared/ViewModels/CreationViewModel.swift
+enum GenerationPhase: Sendable, Equatable {
+    case idle
+    case generatingText(partialText: String)
+    case generatingCharacterSheet
+    case generatingImages(completedCount: Int, totalCount: Int)
+    case complete
+    case failed(String)
+}
+
+private(set) var phase: GenerationPhase = .idle
+
+func squeezeStory() {
+    generationTask = Task {
+        phase = .generatingText(partialText: "")
+
+        // Pass 1
+        let book = try await storyGenerator.generateStory(
+            concept: storyConcept,
+            pageCount: pageCount
+        ) { partialText in
+            phase = .generatingText(partialText: partialText)
+        }
+
+        // Pass 2 (if needed)
+        phase = .generatingCharacterSheet
+        // ...
+
+        // Image generation
+        phase = .generatingImages(completedCount: 0, totalCount: book.pages.count + 1)
+        try await illustrationGenerator.generateIllustrations(
+            for: book.pages,
+            coverPrompt: book.coverPrompt
+        ) { index, image in
+            generatedImages[index] = image
+            let completed = generatedImages.count
+            phase = .generatingImages(
+                completedCount: completed,
+                totalCount: book.pages.count + 1
+            )
+        }
+
+        phase = .complete
+    }
+}
+```
+
+## Error handling and retries
+
+### Guardrail retries (Foundation Models)
+
+```swift Shared/Generation/StoryGenerator.swift
+for attempt in 0...GenerationConfig.guardrailRetryAttempts {
+    do {
+        let book = try await attemptGeneration(concept: concept, pageCount: pageCount)
+        return book
+    } catch let error as LanguageModelSession.GenerationError {
+        if case .guardrailViolation = error,
+           attempt < GenerationConfig.guardrailRetryAttempts {
+            // False positive — retry with fresh session
+            state = .generating(partialText: "Hmm, let's try that again...")
+            try await Task.sleep(for: .milliseconds(500))
+            continue
+        }
+        throw error
+    }
+}
+```
+
+### Image generation fallback
+
+If Image Playground rejects a prompt, StoryFox tries progressively safer variants:
+
+```swift Shared/Generation/IllustrationGenerator.swift
+private let variantLabels = [
+    "sanitized",          // Full sanitized scene (~180 chars)
+    "shortened",          // First 18 keywords
+    "highReliability",    // First 12 keywords
+    "fallback",           // First 8 keywords + scene framing
+    "ultraSafe",          // First 4 keywords + "sunny day"
+]
+
+func generateSingleImage(prompt: String, pageIndex: Int) async throws -> CGImage {
+    for variant in variantLabels {
+        let modifiedPrompt = buildVariant(prompt, type: variant)
+        do {
+            return try await router.generateImage(prompt: modifiedPrompt)
+        } catch {
+            // Try next variant
+            continue
+        }
+    }
+
+    throw ImageGenerationError.allVariantsFailed
+}
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Architecture" href="/development/architecture" icon="diagram-project">
+    Learn about @Generable and @Observable patterns
+  </Card>
+  <Card title="Project structure" href="/development/project-structure" icon="folder-tree">
+    Explore the codebase organization
+  </Card>
+</CardGroup>

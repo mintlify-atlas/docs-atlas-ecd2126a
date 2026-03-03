@@ -1,0 +1,261 @@
+---
+title: Book formats
+description: Choose from four book formats with different aspect ratios and print dimensions
+---
+
+StoryFox supports four book formats, each optimized for different use cases. All formats are print-ready at 300 DPI and include both screen and print dimension specifications.
+
+## Available formats
+
+<CardGroup cols={2}>
+  <Card title="Standard square" icon="square">
+    Classic 8.5" × 8.5" square picture book format
+    
+    Most popular format for children's books
+  </Card>
+  
+  <Card title="Landscape" icon="rectangle">
+    Wide 11" × 8.5" landscape for panoramic illustrations
+    
+    Great for expansive scenes and wide compositions
+  </Card>
+  
+  <Card title="Small square" icon="square-dashed">
+    Compact 6" × 6" mini board book format
+    
+    Perfect for younger children and portable books
+  </Card>
+  
+  <Card title="Portrait" icon="rectangle-portrait">
+    Tall 8.5" × 11" portrait format
+    
+    Ideal for vertical compositions and tall characters
+  </Card>
+</CardGroup>
+
+## Format specifications
+
+```swift
+enum BookFormat: String, CaseIterable {
+    case standard
+    case landscape
+    case small
+    case portrait
+    
+    var displayName: String {
+        switch self {
+        case .standard:  "Standard Square"
+        case .landscape: "Landscape"
+        case .small:     "Small Square"
+        case .portrait:  "Portrait"
+        }
+    }
+}
+```
+
+## Dimensions
+
+### Screen dimensions (72 DPI)
+
+Used for in-app preview and reading:
+
+| Format | Width | Height | Aspect ratio |
+|--------|-------|--------|-------------|
+| Standard Square | 612 pt | 612 pt | 1:1 |
+| Landscape | 792 pt | 612 pt | 11:8.5 |
+| Small Square | 432 pt | 432 pt | 1:1 |
+| Portrait | 612 pt | 792 pt | 8.5:11 |
+
+```swift
+var dimensions: CGSize {
+    switch self {
+    case .standard:  CGSize(width: 612, height: 612)    // 8.5 × 8.5 inches
+    case .landscape: CGSize(width: 792, height: 612)    // 11 × 8.5 inches
+    case .small:     CGSize(width: 432, height: 432)    // 6 × 6 inches
+    case .portrait:  CGSize(width: 612, height: 792)    // 8.5 × 11 inches
+    }
+}
+```
+
+### Print dimensions (300 DPI)
+
+Used for PDF export and print-ready output:
+
+| Format | Width | Height | Total pixels |
+|--------|-------|--------|-------------|
+| Standard Square | 2550 px | 2550 px | 6.5M |
+| Landscape | 3300 px | 2550 px | 8.4M |
+| Small Square | 1800 px | 1800 px | 3.2M |
+| Portrait | 2550 px | 3300 px | 8.4M |
+
+```swift
+var printDimensions: CGSize {
+    switch self {
+    case .standard:  CGSize(width: 2550, height: 2550)
+    case .landscape: CGSize(width: 3300, height: 2550)
+    case .small:     CGSize(width: 1800, height: 1800)
+    case .portrait:  CGSize(width: 2550, height: 3300)
+    }
+}
+```
+
+## Format icons
+
+Each format has an associated SF Symbol icon:
+
+```swift
+var iconName: String {
+    switch self {
+    case .standard:  "square"
+    case .landscape: "rectangle"
+    case .small:     "square.dashed"
+    case .portrait:  "rectangle.portrait"
+    }
+}
+```
+
+## Aspect ratio calculations
+
+The aspect ratio determines image generation and layout:
+
+```swift
+var aspectRatio: CGFloat {
+    dimensions.width / dimensions.height
+}
+```
+
+| Format | Aspect ratio | Decimal |
+|--------|--------------|--------|
+| Standard Square | 1:1 | 1.000 |
+| Landscape | 11:8.5 | 1.294 |
+| Small Square | 1:1 | 1.000 |
+| Portrait | 8.5:11 | 0.773 |
+
+## Format selection in UI
+
+<Tabs>
+  <Tab title="SwiftUI picker">
+    ```swift
+    Picker("Format", selection: $selectedFormat) {
+        ForEach(BookFormat.allCases) { format in
+            Label(format.displayName, systemImage: format.iconName)
+                .tag(format)
+        }
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Format descriptions">
+    ```swift
+    var description: String {
+        switch self {
+        case .standard:  "Classic 8.5\" × 8.5\" square picture book format"
+        case .landscape: "Wide 11\" × 8.5\" landscape for panoramic illustrations"
+        case .small:     "Compact 6\" × 6\" mini board book format"
+        case .portrait:  "Tall 8.5\" × 11\" portrait format"
+        }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Impact on image generation
+
+The selected format affects image generation:
+
+<Steps>
+  <Step title="Image dimensions">
+    Generated images match the format's aspect ratio and print dimensions
+  </Step>
+  
+  <Step title="Composition hints">
+    Portrait formats favor vertical compositions; landscape favors horizontal
+  </Step>
+  
+  <Step title="Scene framing">
+    Wider formats allow more background detail; narrower formats focus on characters
+  </Step>
+</Steps>
+
+## PDF rendering with formats
+
+Each format affects PDF layout:
+
+```swift
+func render(storybook: StoryBook, images: [Int: CGImage], format: BookFormat) -> Data {
+    let pageSize = format.dimensions
+    let contentRect = CGRect(
+        x: margin,
+        y: margin,
+        width: pageSize.width - (margin * 2),
+        height: pageSize.height - (margin * 2)
+    )
+    
+    // Render pages with format-specific dimensions
+}
+```
+
+### Layout proportions
+
+All formats use consistent layout ratios:
+
+- **Image area**: 55% of page height
+- **Text area**: 30% of page height
+- **Margins**: 0.75 inches (54 points)
+- **Divider position**: 38% from bottom
+
+## EPUB rendering with formats
+
+EPUB files are generated as fixed-layout with viewport matching the format:
+
+```swift
+private func stylesheet(vw: Int, vh: Int) -> String {
+    """
+    @viewport { width: \(vw)px; height: \(vh)px; }
+    html, body {
+        width: \(vw)px; height: \(vh)px;
+        overflow: hidden;
+    }
+    """
+}
+```
+
+## Format recommendations
+
+<AccordionGroup>
+  <Accordion title="Standard square - Best for most stories">
+    - Balanced composition
+    - Familiar children's book format
+    - Works well for character-focused stories
+    - Easy to print and bind
+  </Accordion>
+  
+  <Accordion title="Landscape - Best for panoramic scenes">
+    - Wide establishing shots
+    - Expansive outdoor settings
+    - Group scenes with multiple characters
+    - Horizon-focused compositions
+  </Accordion>
+  
+  <Accordion title="Small square - Best for young children">
+    - Portable board book size
+    - Simple, focused illustrations
+    - Fewer words per page
+    - Durable format
+  </Accordion>
+  
+  <Accordion title="Portrait - Best for tall subjects">
+    - Tall characters (giraffes, trees)
+    - Vertical movement (climbing, flying up)
+    - Tower or building stories
+    - Full-body character portraits
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+After selecting a format:
+
+- Generate your story with [story generation](/features/story-generation)
+- Create illustrations optimized for your chosen format
+- [Export](/features/export) to PDF or EPUB with print-ready dimensions

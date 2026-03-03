@@ -1,0 +1,219 @@
+---
+title: Installation
+description: Download and install StoryFox on macOS 26 with Apple Silicon
+---
+
+## Requirements
+
+Before installing StoryFox, ensure your system meets these requirements:
+
+<CardGroup cols={2}>
+  <Card title="macOS 26" icon="apple">
+    Tahoe or later on Apple Silicon (M1, M2, M3, M4)
+  </Card>
+  
+  <Card title="Apple Intelligence" icon="sparkles">
+    Enabled on your device for on-device generation
+  </Card>
+  
+  <Card title="Xcode 26" icon="code">
+    With macOS 26 SDK (only required to build from source)
+  </Card>
+  
+  <Card title="XcodeGen" icon="wrench">
+    Install via `brew install xcodegen` (only for building from source)
+  </Card>
+</CardGroup>
+
+<Warning>
+  StoryFox is currently **macOS-first**. The iOS target exists but is on hold. This documentation focuses exclusively on the macOS experience.
+</Warning>
+
+## Download the DMG
+
+The easiest way to install StoryFox is to download the pre-built, signed, and notarized DMG from GitHub Releases.
+
+<Steps>
+  <Step title="Download the latest release">
+    Grab the latest signed & notarized DMG from the [GitHub Releases page](https://github.com/jakerains/StoryFox/releases/latest).
+    
+    ```bash
+    # Direct download link
+    https://github.com/jakerains/StoryFox/releases/latest/download/StoryFox.dmg
+    ```
+  </Step>
+  
+  <Step title="Mount the DMG">
+    Double-click the downloaded `StoryFox.dmg` file to mount it. A Finder window will open showing the StoryFox app.
+  </Step>
+  
+  <Step title="Drag to Applications">
+    Drag the **StoryFox.app** icon to your **Applications** folder. macOS will copy the app to your system.
+  </Step>
+  
+  <Step title="Launch StoryFox">
+    Open **StoryFox** from your Applications folder or Spotlight. On first launch, macOS may ask you to confirm you want to open an app downloaded from the internet.
+    
+    <Note>
+      The app is signed with a Developer ID and notarized by Apple, so you won't see Gatekeeper warnings.
+    </Note>
+  </Step>
+</Steps>
+
+## Build from source
+
+If you prefer to build StoryFox from source, you'll need Xcode 26 and XcodeGen installed.
+
+<Steps>
+  <Step title="Install XcodeGen">
+    StoryFox uses [XcodeGen](https://github.com/yonaskolb/XcodeGen) to generate the Xcode project from `project.yml`.
+    
+    ```bash Install XcodeGen via Homebrew
+    brew install xcodegen
+    ```
+  </Step>
+  
+  <Step title="Clone the repository">
+    Clone the StoryFox repository from GitHub:
+    
+    ```bash Clone repository
+    git clone https://github.com/jakerains/StoryFox.git
+    cd StoryFox
+    ```
+  </Step>
+  
+  <Step title="Check your toolchain">
+    Run the `doctor` command to verify your toolchain and SDK readiness:
+    
+    ```bash Verify toolchain
+    make doctor
+    ```
+    
+    This command checks that you have:
+    - Xcode 26 installed
+    - macOS 26 SDK available
+    - XcodeGen installed
+  </Step>
+  
+  <Step title="Build and run">
+    Use the included Makefile to build and launch StoryFox:
+    
+    ```bash Build and run debug
+    make run
+    ```
+    
+    This will:
+    1. Run `xcodegen generate` to create `StoryFox.xcodeproj`
+    2. Build the Debug configuration
+    3. Launch the app
+  </Step>
+</Steps>
+
+<Note>
+  The `StoryFox.xcodeproj` file is **generated** from `project.yml`. If you add, move, or rename files, run `xcodegen generate` to regenerate the project file.
+</Note>
+
+## Make commands
+
+StoryFox includes a comprehensive Makefile for common development tasks:
+
+| Command | Description |
+|---------|-------------|
+| `make help` | List all available targets |
+| `make doctor` | Check toolchain and SDK readiness |
+| `make build` | Build Debug for macOS |
+| `make run` | Build and launch Debug app |
+| `make build-release` | Build Release for macOS |
+| `make run-release` | Build and launch Release app |
+| `make dmg` | Full distribution pipeline: sign, notarize, staple, package DMG |
+| `make clean` | Clean Xcode build artifacts |
+| `make appcast` | Regenerate `appcast.xml` from DMGs in `dist/` |
+| `make sparkle-setup` | One-time EdDSA key pair generation for Sparkle signing |
+| `make purge-image-cache` | Remove cached Diffusers model data |
+
+<CodeGroup>
+
+```bash Build debug
+make build
+```
+
+```bash Build release
+make build-release
+```
+
+```bash Create signed DMG
+make dmg
+```
+
+</CodeGroup>
+
+## Cloud features (optional)
+
+StoryFox works out of the box with on-device Apple Intelligence, but you can optionally configure cloud providers for more powerful generation:
+
+<Steps>
+  <Step title="Create a Hugging Face account">
+    Sign up for a free account at [huggingface.co](https://huggingface.co).
+  </Step>
+  
+  <Step title="Authenticate in StoryFox">
+    Open **Settings** → **Cloud** and log in via OAuth device flow or paste your API token.
+    
+    StoryFox supports both:
+    - **OAuth device flow** — browser-based login with automatic token refresh
+    - **API token** — manual token entry stored securely in Keychain
+  </Step>
+  
+  <Step title="Select cloud models">
+    Once authenticated, you can select from a curated list of cloud models for text and image generation:
+    
+    - **Text**: GPT-OSS 120B, Qwen3 32B, DeepSeek V3, and more
+    - **Images**: FLUX.1-schnell, HunyuanImage 3.0, SD 3.5 Medium, and more
+  </Step>
+</Steps>
+
+<Note>
+  Cloud generation routes through Hugging Face's native inference endpoints. Text generation uses the OpenAI-compatible `/v1/chat/completions` API, while image generation uses the native `/hf-inference/models/{model_id}` endpoint.
+</Note>
+
+## Auto-updates
+
+StoryFox uses [Sparkle 2](https://sparkle-project.org/) for automatic updates. New versions are signed with EdDSA, notarized by Apple, and delivered as DMGs via GitHub Releases.
+
+<Steps>
+  <Step title="Check for updates">
+    The app checks for updates automatically on launch. You can manually check via **StoryFox** → **Check for Updates...**
+  </Step>
+  
+  <Step title="Download and install">
+    When an update is available, Sparkle will download the DMG, verify the signature, and prompt you to install.
+  </Step>
+  
+  <Step title="Relaunch">
+    After installation, relaunch StoryFox to use the new version.
+  </Step>
+</Steps>
+
+<Warning>
+  Do not delete `Resources/StoryFox-Info.plist` — update verification depends on it. The `SUPublicEDKey` field contains the public key for Sparkle's EdDSA signature verification.
+</Warning>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Quickstart"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Create your first story end-to-end in under 5 minutes
+  </Card>
+  
+  <Card
+    title="Introduction"
+    icon="book"
+    href="/introduction"
+  >
+    Learn more about StoryFox's features and architecture
+  </Card>
+</CardGroup>
